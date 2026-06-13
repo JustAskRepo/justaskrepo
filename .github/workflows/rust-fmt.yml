@@ -1,4 +1,4 @@
-name: Rust
+name: Rust Format Check
 
 on:
   pull_request:
@@ -9,7 +9,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build_and_test:
+  fmt:
+    name: cargo fmt --check
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -18,8 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build
-        run: cargo build 
+      - name: Install rustfmt
+        run: rustup component add rustfmt
 
-      - name: Run tests
-        run: cargo test --verbose
+      - name: Check formatting
+        run: cargo fmt --all --check
