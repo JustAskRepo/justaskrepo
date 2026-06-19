@@ -1,3 +1,234 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/*  Design tokens (Tailwind v4 CSS-first theme)                        */
+/* ------------------------------------------------------------------ */
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+
+  --color-bg: #07070d;
+  --color-bg-soft: #0c0c16;
+  --color-ink: #ecedf5;
+  --color-muted: #989fba;
+  --color-faint: #6b7290;
+  --color-line: rgba(255, 255, 255, 0.08);
+
+  --color-accent: #8b5cf6; /* violet */
+  --color-accent-2: #22d3ee; /* cyan  */
+  --color-accent-3: #34d399; /* emerald */
+}
+
+/* ------------------------------------------------------------------ */
+/*  Base                                                               */
+/* ------------------------------------------------------------------ */
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 40%, transparent);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Decorative background                                              */
+/* ------------------------------------------------------------------ */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+}
+
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Animations                                                         */
+/* ------------------------------------------------------------------ */
+@keyframes float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -38px, 0); }
+}
+@keyframes float-x {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(36px, -24px, 0); }
+}
+@keyframes gradient-pan {
+  to { background-position: 300% center; }
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(22px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+@keyframes shimmer {
+  to { transform: translateX(200%); }
+}
+
+.animate-float { animation: float 9s ease-in-out infinite; }
+.animate-float-slow { animation: float 14s ease-in-out infinite; }
+.animate-float-x { animation: float-x 12s ease-in-out infinite; }
+.animate-spin-slow { animation: spin-slow 22s linear infinite; }
+
+/* Entrance for above-the-fold hero content (no observer needed) */
+.rise {
+  opacity: 0;
+  animation: rise 0.85s cubic-bezier(0.22, 0.7, 0.16, 1) forwards;
+}
+
+/* Animated gradient text */
+.text-gradient {
+  background: linear-gradient(
+    100deg,
+    var(--color-accent),
+    var(--color-accent-2),
+    var(--color-accent-3),
+    var(--color-accent)
+  );
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gradient-pan 7s linear infinite;
+}
+
+/* Typewriter caret */
+.caret {
+  display: inline-block;
+  width: 0.6ch;
+  margin-left: 1px;
+  background: var(--color-accent-2);
+  color: transparent;
+  border-radius: 1px;
+  animation: blink 1.05s steps(1) infinite;
+}
+
+/* Scroll-reveal wrapper */
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Glass surface */
+.glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--color-line);
+  backdrop-filter: blur(14px);
+}
+
+/* Card hover sheen */
+.card-glow {
+  position: relative;
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), border-color 0.35s ease;
+}
+.card-glow:hover {
+  transform: translateY(-5px);
+  border-color: color-mix(in oklab, var(--color-accent) 45%, var(--color-line));
+}
+.card-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), color-mix(in oklab, var(--color-accent) 18%, transparent), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+.card-glow:hover::after {
+  opacity: 1;
+}
+
+/* GitHub / CTA button shimmer */
+.shimmer-host {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer-host::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  transform: translateX(0);
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
+.shimmer-host:hover::before {
+  opacity: 1;
+  animation: shimmer 0.9s ease forwards;
+}
+
+/* Conic glow ring behind primary button */
+.glow-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    var(--color-accent),
+    var(--color-accent-2),
+    var(--color-accent-3),
+    var(--color-accent)
+  );
+  filter: blur(10px);
+  z-index: -1;
+  animation: spin-slow 6s linear infinite;
+  /* opacity is controlled via Tailwind utilities on the element so the
+     hover reveal isn't overridden by this (unlayered) rule. */
+}
+
+/* ------------------------------------------------------------------ */
+/*  Reduced motion                                                     */
+/* ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .rise,
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
