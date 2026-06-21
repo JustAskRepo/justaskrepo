@@ -1,6 +1,6 @@
-import GitHubButton from "./components/github-button";
-import AskTerminal from "./components/ask-terminal";
-import Reveal from "./components/reveal";
+import GitHubButton from "@/components/github-button";
+import AskTerminal from "@/components/ask-terminal";
+import Reveal from "@/components/reveal";
 
 /* ------------------------------------------------------------------ */
 /*  Small inline icons                                                 */
