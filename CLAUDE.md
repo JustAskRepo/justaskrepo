@@ -148,3 +148,4 @@ If asked to do any of the following, decline and suggest the correct approach:
 - Vector DB: Qdrant (self-hosted or cloud) — accessed only from `indexing` module's infrastructure layer
 - Chunking: Tree-sitter for code-aware chunking — only in `indexing` module
 - LLM: OpenAI API — only in `chat` module's infrastructure layer
+- Load the /rust skill. Don't follow C/C++/Go norms.
