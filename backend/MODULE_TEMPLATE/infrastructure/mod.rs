@@ -1,6 +1,6 @@
 // <module_name>/infrastructure/mod.rs
 //
-// DB repositories, external API clients (OpenAI, GitHub, Qdrant).
+// DB repositories, external API clients (Gemini, GitHub, Qdrant).
 // Visibility: pub(super) only — never exposed outside this module.
 //
 // Depends on: domain/ (for types), application/ (for repository traits)

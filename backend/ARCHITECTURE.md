@@ -49,7 +49,7 @@ backend/src/
 │   ├── auth/           # GitHub OAuth, session management
 │   ├── installations/  # GitHub App installations, repo access
 │   ├── indexing/       # Repo cloning, Tree-sitter chunking, embedding, Qdrant storage
-│   ├── chat/           # RAG pipeline, conversation management, OpenAI calls
+│   ├── chat/           # RAG pipeline, conversation management, Gemini calls
 │   └── webhooks/       # GitHub App webhook ingestion, event routing
 ├── shared_kernel/      # Primitives shared across all modules (no business logic)
 │   ├── domain_events.rs
@@ -93,7 +93,7 @@ modules/<name>/
 │   └── events/         # Domain event handlers (subscriptions)
 └── infrastructure/
     ├── mod.rs
-    └── <repo>.rs       # DB access, external API clients (Qdrant, GitHub, OpenAI)
+    └── <repo>.rs       # DB access, external API clients (Qdrant, GitHub, Gemini)
 ```
 
 **Visibility rules (enforced by Rust compiler):**

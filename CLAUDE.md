@@ -7,9 +7,9 @@
 
 ## Project Summary
 
-JustAskRepo is a Rust backend (FastAPI being migrated to Rust) + Next.js 15 frontend.  
-Backend: Rust, Axum, SQLx (Postgres), Qdrant, OpenAI API, GitHub App.  
-Frontend: Next.js 15, NextAuth v5, TypeScript.
+JustAskRepo is a Rust backend (FastAPI being migrated to Rust) + Next.js 16 frontend.  
+Backend: Rust, Axum, SQLx (Postgres), Qdrant, Gemini API, GitHub App.  
+Frontend: Next.js 16, TypeScript.
 
 The backend follows a **Modular Monolith** architecture. Every architectural decision is documented in `backend/ARCHITECTURE.md` and `backend/ADR/`.
 
@@ -111,7 +111,7 @@ Any change to a module's `api.rs` that modifies public types or removes/renames 
 | Business rule / invariant | `modules/<name>/domain/` |
 | Use case orchestration | `modules/<name>/application/commands/` or `queries/` |
 | Database query | `modules/<name>/infrastructure/<repo>.rs` |
-| External API call (OpenAI, GitHub) | `modules/<name>/infrastructure/<client>.rs` |
+| External API call (Gemini, GitHub) | `modules/<name>/infrastructure/<client>.rs` |
 | Domain event definition | `modules/<name>/domain/events.rs` |
 | Event handler (reaction to another module's event) | `modules/<name>/application/events/` |
 | HTTP route handler | `main.rs` (thin, just calls api.rs handler) |
@@ -143,9 +143,10 @@ If asked to do any of the following, decline and suggest the correct approach:
 
 ## Helpful Context
 
-- Monorepo: `backend/` (Rust), `frontend/` (Next.js 15)
-- Auth: GitHub OAuth via NextAuth v5 on frontend; GitHub App installation tokens on backend
+- Monorepo: `backend/` (Rust), `frontend/` (Next.js 16)
+- Auth: GitHub OAuth on frontend (flow not yet implemented — no auth library currently installed); GitHub App installation tokens on backend
 - Vector DB: Qdrant (self-hosted or cloud) — accessed only from `indexing` module's infrastructure layer
 - Chunking: Tree-sitter for code-aware chunking — only in `indexing` module
-- LLM: OpenAI API — only in `chat` module's infrastructure layer
+- LLM: Gemini API — only in `chat` module's infrastructure layer
+- Embeddings: Gemini Embeddings API — only in `indexing` module's infrastructure layer
 - Load the /rust skill. Don't follow C/C++/Go norms.
