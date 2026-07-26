@@ -13,11 +13,11 @@ JustAskRepo lets you connect a GitHub repository and ask questions about it in p
 | Frontend           | Next.js 16 + TypeScript     |
 | Backend            | Rust + Axum                 |
 | Parsing            | Tree-sitter (Rust bindings) |
-| Vector Store       | Qdrant                      |
+| Vector Store       | Qdrant (Qdrant Cloud)       |
 | Embeddings         | Gemini Embeddings API       |
 | LLM                | Gemini                      |
-| Database           | PostgreSQL                  |
-| Cache / Queue      | Valkey                      |
+| Database           | PostgreSQL (Neon)           |
+| Cache / Queue      | Valkey (self-hosted)        |
 | GitHub Integration | GitHub App (OAuth + Webhooks) |
 
 ---
@@ -68,6 +68,41 @@ Every module has the same four layers — `api.rs`, `domain/`, `application/`, `
 3. **Store** — chunks and their vectors land in Qdrant; metadata lives in PostgreSQL. Valkey caches hot data (embeddings, repeated query results, GitHub API responses) and backs an async job queue so repo indexing runs off the request path.
 4. **Retrieve** — queries run through a hybrid pipeline combining BM25 keyword matching with vector similarity, returning semantically coherent code units.
 5. **Answer** — retrieved context grounds a Gemini-powered chat interface that responds with relevant code.
+
+---
+
+## Development
+
+Copy `.env.example` to `.env` and fill in the Neon, Qdrant Cloud, and Gemini values, then:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+Open **http://localhost:3001** — not 8080. In dev the Next dev server owns the browser
+origin and proxies `/api/*` to Axum (via the `rewrites` block in `next.config.ts`, which
+reads `AXUM_DEV_URL`), so the app still sees a single origin and session cookies behave
+the same as in production. Both halves hot-reload: `cargo watch` rebuilds the Rust binary
+on save, Turbopack does HMR for the frontend.
+
+Production is the inverse and runs from the base file alone:
+
+```bash
+docker compose up --build     # single binary on :8080, SPA baked in
+```
+
+Notes:
+
+- **Postgres and Qdrant are managed** (Neon / Qdrant Cloud), so dev talks to real remote
+  services. Point `DATABASE_URL` at a Neon branch if you want isolation from prod data.
+  Only Valkey runs locally.
+- **Cargo artifacts live in a named volume** (`cargo-target`), not `backend/target`. The
+  host target dir is built against Fedora's glibc and would thrash against Debian's inside
+  the container. First boot compiles from scratch; later ones are incremental.
+- **Bind mounts use `:z`** because SELinux is enforcing. Without the label the containers
+  get permission denied on the mounted source.
+- Reset a wedged dev environment with
+  `docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v`.
 
 ---
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { getWsTicket } from "@/lib/api-client";
+import { chatSocketUrl, getWsTicket } from "@/lib/api-client";
 import type { ChatFrame } from "@/types/api";
 
 interface ChatSocketState {
@@ -12,12 +12,12 @@ interface ChatSocketState {
 }
 
 /**
- * Chat WebSocket hook (see extras/JustAskRepo-Architecture.md §2.4 / §8).
+ * Chat WebSocket hook (see extras/JustAskRepo-Architecture.md §2.4).
  *
- * Flow: fetch a single-use ws-ticket from the BFF, open `wss://…/ws/chat?ticket=…`
- * directly to Axum (the only browser->Axum path), send {session_id, message},
- * and stream `ChatFrame`s back. This is a scaffold — the actual socket wiring is
- * left as a TODO.
+ * Flow: fetch a single-use ws-ticket from Axum (`getWsTicket`), open
+ * `chatSocketUrl(ticket)` (same-origin wss to Axum), send { session_id,
+ * message }, and stream `ChatFrame`s back. This is a scaffold — the actual
+ * socket wiring is left as a TODO.
  */
 export function useChatSocket(sessionId: string): ChatSocketState {
   const [reply, setReply] = useState("");
@@ -27,9 +27,11 @@ export function useChatSocket(sessionId: string): ChatSocketState {
     async (message: string) => {
       setReply("");
       // TODO: const { ticket } = await getWsTicket(sessionId);
-      //       open WebSocket, send { session_id, message }, and on each frame:
+      //       const ws = new WebSocket(chatSocketUrl(ticket));
+      //       ws.send({ session_id, message }); on each frame:
       //       handleFrame(frame) -> append tokens / collect citations / finish.
       void getWsTicket;
+      void chatSocketUrl;
       void sessionId;
       void message;
     },

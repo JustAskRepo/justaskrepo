@@ -2,55 +2,68 @@
 
 # JustAskRepo Frontend — Structure (enforced)
 
-> The frontend is **thin**: Rust owns repo-domain complexity. Next.js does identity,
-> presentation, and proxying. This structure mirrors `extras/JustAskRepo-Architecture.md` §8
-> and MUST be maintained. The `@/*` import alias maps to the `frontend/` root (see `tsconfig.json`).
+> The frontend is a **static export** (`output: 'export'`) — a pure client-side SPA.
+> There is **no Next.js server**. Axum serves the exported `out/` and owns every bit of
+> server logic (auth, indexing, retrieval, chat streaming). The browser talks to Axum
+> **directly**, same-origin, under `/api/*`. This structure MUST be maintained.
+> The `@/*` import alias maps to the `frontend/` root (see `tsconfig.json`).
 
 ```
 frontend/
+  next.config.ts                     # output:'export', images.unoptimized, trailingSlash
   app/
-    page.tsx                         # marketing landing ("/")
-    (auth)/login/page.tsx            # GitHub OAuth entry
-    dashboard/page.tsx               # server component: lists repos
-    repos/[id]/page.tsx              # server component: repo detail + status
-    repos/[id]/chat/page.tsx         # client island for chat
-    api/                             # BFF route handlers (browser -> here -> Axum)
-      auth/[...nextauth]/route.ts    # NextAuth v5
-      repos/route.ts                 # -> Axum GET /repositories
-      repos/[id]/index/route.ts      # -> POST /repositories/:id/index
-      repos/[id]/status/route.ts     # -> GET status (polled)
-      chat/ws-ticket/route.ts        # -> POST /chat/ws-ticket
+    layout.tsx                       # root layout (static)
+    page.tsx                         # marketing landing ("/") — static
+    (auth)/login/page.tsx            # GitHub OAuth entry — static
+    dashboard/page.tsx               # "use client": fetches + lists repos
+    repos/page.tsx                   # "use client": repo detail, reads ?id=
+    repos/chat/page.tsx              # "use client": chat island, reads ?id=
   components/                        # dumb, reusable presentational components
   features/                          # feature-scoped UI + logic
     repos/{RepoList,RepoStatusBadge,IndexButton}.tsx
     chat/{ChatWindow.tsx,useChatSocket.ts}
-  lib/                               # client-safe helpers
-    api-client.ts                    # typed fetch wrapper (browser -> /api/*)
+  lib/                               # client-only helpers
+    api-client.ts                    # typed fetch -> Axum /api/*, + auth/ws URLs
     format.ts
-  server/                            # SERVER-ONLY (never bundled to client)
-    axum.ts                          # server fetch to Axum + internal-JWT minting
-    auth.ts                          # NextAuth config, auth() helper, getUserId()
   types/
     api.ts                           # shared DTOs mirroring the Axum API
 ```
 
+## The hard constraint: zero Next server features
+
+Static export forbids all of these, and the build errors if you add one. If you reach
+for any of them, you've drifted from the plan — the answer lives in Axum, not here:
+
+- **No** `app/api/*` route handlers, **no** server actions, **no** `middleware.ts`/`proxy.ts`.
+- **No** Server Components that fetch per-request data, **no** SSR/ISR, **no** `server-only` modules.
+- **No** NextAuth / BFF / internal-JWT layer. Auth is a same-origin session cookie set by Axum.
+- **No** `next/image` optimizer (`images.unoptimized: true` is required), **no** dynamic route
+  segments for runtime-unknown ids (see rule 4).
+
 ## Rules
 
-1. **Server-only boundary.** Anything that touches the Axum backend, mints the internal JWT,
-   or reads a secret lives in `server/` and starts with `import "server-only"`. NEVER import a
-   `server/` module from a client component (`"use client"`) or from `lib/`/`components/`.
-2. **All authenticated REST goes through the BFF.** Browser → `app/api/*` route handler → Axum.
-   The browser never calls Axum directly or holds the internal JWT. The single exception is the
-   chat **WebSocket**, opened directly to Axum using a single-use ticket from
-   `/api/chat/ws-ticket`.
+1. **Browser → Axum directly.** All data access goes through `lib/api-client.ts`, which hits
+   relative `/api/*` on the same origin with `credentials: "include"`. No API base URL env var —
+   same-origin relative paths are frozen-safe and need no `NEXT_PUBLIC_*`. The chat WebSocket
+   opens to Axum via `chatSocketUrl(ticket)` using a single-use ticket from `/api/chat/ws-ticket`.
+2. **Auth belongs to Axum.** Sign-in is a full-page navigation to `githubLoginUrl()`
+   (`/api/auth/github/login`). Axum runs the OAuth dance and sets an httpOnly session cookie;
+   the browser sends it automatically on every `/api/*` call. The frontend never sees a token,
+   mints nothing, and reads no secret.
 3. **Where things go:**
    - Reusable, presentational, feature-agnostic UI → `components/`.
    - Feature-scoped components, hooks, and client logic → `features/<feature>/`.
-   - Browser fetch calls → `lib/api-client.ts` (typed, hits `/api/*` only).
+   - Browser fetch calls + auth/ws URL builders → `lib/api-client.ts` (hits `/api/*` only).
    - Shared wire/DTO types → `types/api.ts` (keep in sync with the Rust backend).
    - Pure formatting/util helpers → `lib/`.
-4. **Routes follow the `app/` tree.** New pages under `app/`; new BFF proxies under `app/api/`.
-   Use the Next 16 async `params` convention (`params: Promise<{...}>`, then `await params`).
-5. **Server vs client.** Data fetching and the internal JWT live in server components / route
-   handlers. Interactive bits (chat socket, status polling, the Index button) are client
-   components.
+4. **Runtime-dynamic ids travel as query params, not route segments.** Export pre-renders one
+   HTML file per route at build time; a `[id]` segment would require `generateStaticParams` over
+   ids we can't know then. So repo detail/chat are `repos/page.tsx` + `repos/chat/page.tsx` read
+   via `useSearchParams().get("id")` — wrapped in `<Suspense>` (required for `useSearchParams` in
+   export). Link as `/repos?id=…` and `/repos/chat?id=…`.
+5. **Client by default here — but keep pages thin.** Pages that read data or params are
+   `"use client"`. Static content (landing, login, layout) stays a Server Component so it's
+   pre-rendered with no JS shipped. Push `"use client"` to the smallest island that needs it.
+6. **Deep-link/refresh recovery is the backend's job.** `trailingSlash: true` emits
+   `route/index.html`; Axum's `ServeDir` falls back to `out/index.html` so a hard refresh on a
+   client route doesn't 404. Don't try to solve routing recovery in Next.

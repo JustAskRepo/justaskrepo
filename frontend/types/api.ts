@@ -2,9 +2,9 @@
  * Shared DTO types mirroring the Axum backend API (see
  * extras/JustAskRepo-Architecture.md §6 data model and §9 API design).
  *
- * These are the wire shapes exchanged between the browser, the Next.js BFF
- * route handlers (app/api/*), and the Rust/Axum backend. Keep them in sync
- * with the backend's response types.
+ * These are the wire shapes the browser exchanges directly with the Rust/Axum
+ * backend over `/api/*` (this is a static export — there is no BFF layer).
+ * Keep them in sync with the backend's response types.
  */
 
 export type IndexStatus =

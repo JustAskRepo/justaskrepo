@@ -1,0 +1,56 @@
+# Development overlay. Use with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# (there is a `dev` alias for this in the README). Open http://localhost:3001 —
+# NOT 8080. The Next dev server proxies /api/* to Axum, so the browser sees a
+# single origin and session cookies behave exactly as they do in production.
+#
+# Postgres (Neon) and Qdrant (Qdrant Cloud) are managed, so dev talks to the
+# same remote services as prod. Point DATABASE_URL at a Neon *branch* if you
+# want isolation from production data.
+#
+# All bind mounts carry :z — SELinux is enforcing on this host and would
+# otherwise deny the container access to the mounted source.
+
+services:
+  app:
+    build:
+      dockerfile: Dockerfile.dev
+      target: backend-dev
+    restart: "no" # a crash loop on a syntax error is noise, not resilience
+    command: cargo watch -w src -w Cargo.toml -x run
+    volumes:
+      - ./backend:/app:z
+      - cargo-target:/target
+      - cargo-registry:/usr/local/cargo/registry
+    environment:
+      RUST_LOG: ${RUST_LOG:-backend=debug,tower_http=debug,info}
+      RUST_BACKTRACE: "1"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: frontend-dev
+    restart: "no"
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./frontend:/app/frontend:z
+      - web-node-modules:/app/frontend/node_modules
+      - web-next-cache:/app/frontend/.next
+    environment:
+      # next.config.ts reads this for its /api/:path* rewrite destination.
+      # Container-to-container, so it is the compose service name, not localhost.
+      AXUM_DEV_URL: http://app:8080
+    # node_modules is a named volume and starts empty; install on first boot only
+    command: sh -c "[ -d node_modules/next ] || npm ci; npm run dev -- -H 0.0.0.0"
+    depends_on:
+      - app
+
+volumes:
+  cargo-target:
+  cargo-registry:
+  web-node-modules:
+  web-next-cache:

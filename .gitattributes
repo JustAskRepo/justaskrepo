@@ -1,0 +1,30 @@
+# Store every text file with LF in the repository and check it out with LF,
+# so Dockerfiles, shell scripts, and Rust/TS sources stay Linux-clean when the
+# images are built from a Windows checkout.
+* text=auto eol=lf
+
+# Windows-only scripts genuinely need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binaries — never touch these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.svg text
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.pem binary
+
+# Generated — collapse in diffs and exclude from language stats.
+package-lock.json linguist-generated=true
+Cargo.lock linguist-generated=true

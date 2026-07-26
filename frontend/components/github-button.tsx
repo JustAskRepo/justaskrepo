@@ -1,5 +1,7 @@
 "use client";
 
+import { githubLoginUrl } from "@/lib/api-client";
+
 function GitHubMark({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -21,11 +23,9 @@ export default function GitHubButton({
   className?: string;
 }) {
   const handleSignIn = () => {
-    // Auth is intentionally not wired yet — backend stays untouched for now.
-    // This is where the GitHub OAuth flow will kick off later.
-    if (typeof window !== "undefined") {
-      console.info("[JustAskRepo] GitHub sign-in coming soon.");
-    }
+    // Full-page navigation to Axum's OAuth entry — NOT a fetch. Axum runs the
+    // GitHub dance, sets the session cookie, and redirects back into the app.
+    window.location.href = githubLoginUrl();
   };
 
   const dims =

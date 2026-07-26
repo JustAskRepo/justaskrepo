@@ -4,7 +4,7 @@ import { useState } from "react";
 import { startIndexing } from "@/lib/api-client";
 
 /**
- * Triggers (re)indexing of a repository via the BFF. Client component:
+ * Triggers (re)indexing of a repository via Axum. Client component:
  * optimistic "queued" state, then the parent page polls GET status.
  */
 export default function IndexButton({ repoId }: { repoId: string }) {

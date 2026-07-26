@@ -4,7 +4,7 @@ import RepoStatusBadge from "@/features/repos/RepoStatusBadge";
 
 /**
  * Dashboard repo list. Presentational — receives repos from a server component
- * that fetched them via the BFF (lib/api-client `getRepos`).
+ * that fetched them from Axum (lib/api-client `getRepos`).
  */
 export default function RepoList({ repos }: { repos: RepoSummary[] }) {
   if (repos.length === 0) {
@@ -20,7 +20,7 @@ export default function RepoList({ repos }: { repos: RepoSummary[] }) {
       {repos.map((repo) => (
         <li key={repo.repository_id}>
           <Link
-            href={`/repos/${repo.repository_id}`}
+            href={`/repos?id=${repo.repository_id}`}
             className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 transition-colors hover:border-accent/40"
           >
             <span className="text-sm font-medium text-ink">{repo.full_name}</span>
