@@ -43,10 +43,7 @@ github-app.pem
 .DS_Store
 Thumbs.db
 
-# ========================
-# Editor
-# ========================
-.vscode/
+
 .idea/
 *.swp
 *.swo
