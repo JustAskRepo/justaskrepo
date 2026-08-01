@@ -47,7 +47,7 @@ for any of them, you've drifted from the plan — the answer lives in Axum, not 
    same-origin relative paths are frozen-safe and need no `NEXT_PUBLIC_*`. The chat WebSocket
    opens to Axum via `chatSocketUrl(ticket)` using a single-use ticket from `/api/chat/ws-ticket`.
 2. **Auth belongs to Axum.** Sign-in is a full-page navigation to `githubLoginUrl()`
-   (`/api/auth/github/login`). Axum runs the OAuth dance and sets an httpOnly session cookie;
+   (`/api/auth/github`). Axum runs the OAuth dance and sets an httpOnly session cookie;
    the browser sends it automatically on every `/api/*` call. The frontend never sees a token,
    mints nothing, and reads no secret.
 3. **Where things go:**

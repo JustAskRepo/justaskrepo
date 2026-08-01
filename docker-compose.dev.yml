@@ -1,17 +1,3 @@
-# Development overlay. Use with the base file:
-#
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-#
-# (there is a `dev` alias for this in the README). Open http://localhost:3001 —
-# NOT 8080. The Next dev server proxies /api/* to Axum, so the browser sees a
-# single origin and session cookies behave exactly as they do in production.
-#
-# Postgres (Neon) and Qdrant (Qdrant Cloud) are managed, so dev talks to the
-# same remote services as prod. Point DATABASE_URL at a Neon *branch* if you
-# want isolation from production data.
-#
-# All bind mounts carry :z — SELinux is enforcing on this host and would
-# otherwise deny the container access to the mounted source.
 
 services:
   app:
@@ -25,8 +11,13 @@ services:
       - cargo-target:/target
       - cargo-registry:/usr/local/cargo/registry
     environment:
-      RUST_LOG: ${RUST_LOG:-backend=debug,tower_http=debug,info}
+
+      RUST_LOG: ${RUST_LOG:-justaskrepo=debug,tower_http=debug,info}
       RUST_BACKTRACE: "1"
+
+      PUBLIC_URL: http://localhost:3001
+
+      STATIC_DIR: /app/static-unused
 
   web:
     build:

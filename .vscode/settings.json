@@ -1,6 +1,5 @@
 {
   "rust-analyzer.linkedProjects": ["backend/Cargo.toml"],
-  "rust-analyzer.diagnostics.disabled": ["type-mismatch", "non-primitive-cast"],
   "rust-analyzer.check.command": "clippy",
 
   "[rust]": {

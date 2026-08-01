@@ -30,18 +30,18 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY backend/ .
 # Binary name comes from [package] name in backend/Cargo.toml
-RUN cargo build --release --bin backend
+RUN cargo build --release --bin justaskrepo
 
 # ---- Stage 4: runtime — one binary + static assets ----
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=builder /app/target/release/backend /usr/local/bin/backend
+COPY --from=builder /app/target/release/justaskrepo /usr/local/bin/justaskrepo
 # Axum serves these via ServeDir(STATIC_DIR) with out/index.html as the
 # client-router fallback (.not_found_service).
 COPY --from=frontend /app/frontend/out /app/static
 ENV STATIC_DIR=/app/static
 EXPOSE 8080
 # Bind to 0.0.0.0:8080, NOT 127.0.0.1 — see README notes
-CMD ["backend"]
+CMD ["justaskrepo"]

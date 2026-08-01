@@ -15,6 +15,14 @@ The backend follows a **Modular Monolith** architecture. Every architectural dec
 
 ---
 
+## When Suggesting or Deciding
+
+**Think about where this is going, not just where it is.** Weigh every suggestion, addition, and design call against the project's future goals — not only the current state of the codebase. A choice that is convenient for today's five files and painful at fifty is the wrong choice; say so, and propose the one that holds up.
+
+This applies to the whole repo, backend and frontend alike.
+
+---
+
 ## Absolute Rules (Never Violate)
 
 These are non-negotiable. If asked to violate them, refuse and explain why.

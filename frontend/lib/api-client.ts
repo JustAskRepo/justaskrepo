@@ -77,5 +77,5 @@ export function chatSocketUrl(ticket: string): string {
  * cookie, and redirects back to the app.
  */
 export function githubLoginUrl(): string {
-  return `${API_BASE}/auth/github/login`;
+  return `${API_BASE}/auth/github`;
 }
