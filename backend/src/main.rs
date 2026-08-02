@@ -25,10 +25,10 @@ async fn main() -> Result<()> {
     //    nowhere else; a bad one kills startup rather than the first request.
     let config = AppConfig::from_env()?;
     let bind_addr = config.server.bind_addr;
-    let public_url = config.server.public_url.clone();
+    let public_url = &config.server.public_url;
 
     // 2. Context — pools and shared handles, built once and cloned everywhere.
-    let ctx = AppContext::new(config).await?;
+    let ctx = AppContext::new(&config).await?;
 
     // 3. Event subscriptions.
     //    TODO: modules::auth::subscribe(&ctx) etc. once the event bus exists.

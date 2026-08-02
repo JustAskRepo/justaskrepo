@@ -11,8 +11,7 @@
 // Clone is cheap by construction — every field is an Arc or an already-shared
 // handle. That is what lets axum hold it as `State<AppContext>` in both route
 // handlers and middleware.
-
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use sqlx::PgPool;
 
@@ -20,9 +19,7 @@ use super::config::AppConfig;
 
 #[derive(Clone)]
 pub struct AppContext {
-    pub config: Arc<AppConfig>,
     pub db: PgPool,
-    /// Process start, for the health endpoint's uptime.
     pub started_at: Instant,
     // TODO(valkey): sessions, oauth state, rate limits. Blocked on picking a
     //   client crate — see AUTHENTICATION.md §Data Model.
@@ -33,11 +30,9 @@ impl AppContext {
     /// Builds every long-lived resource the process needs. Fails loudly if a
     /// dependency is unreachable — a backend that starts without its database
     /// only moves the outage to the first user request.
-    pub async fn new(config: AppConfig) -> anyhow::Result<Self> {
-        let db = super::db::connect(&config.database).await?;
-
+    pub async fn new(config: &AppConfig) -> anyhow::Result<Self> {
+        let db = super::db::connect_db(&config.database).await?;
         Ok(Self {
-            config: Arc::new(config),
             db,
             started_at: Instant::now(),
         })

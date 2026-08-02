@@ -10,13 +10,10 @@
 //      second zero, not at the first request an hour into a deploy.
 //   2. Secrets are SecretString, never String. Debug prints "[REDACTED]", so a
 //      stray `tracing::info!(?config)` cannot leak the app private key.
-
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use secrecy::SecretString;
-
-// ─── Errors ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -39,8 +36,6 @@ impl ConfigError {
     }
 }
 
-// ─── Shape ───────────────────────────────────────────────────────────────────
-
 #[derive(Debug)]
 pub struct AppConfig {
     pub server: ServerConfig,
@@ -54,19 +49,13 @@ pub struct AppConfig {
 
 #[derive(Debug)]
 pub struct ServerConfig {
-    /// Where Axum listens. Not the same as `public_url` — behind a proxy or in
-    /// Docker these differ.
     pub bind_addr: SocketAddr,
-    /// The origin the browser sees, no trailing slash. Used to build the OAuth
-    /// redirect URI and to validate the `Origin` header on mutating requests.
     pub public_url: String,
-    /// Directory holding the Next.js static export, served at `/`.
     pub static_dir: PathBuf,
 }
 
 #[derive(Debug)]
 pub struct DatabaseConfig {
-    /// Contains the password, hence secret.
     pub url: SecretString,
     pub max_connections: u32,
     pub acquire_timeout: Duration,
@@ -81,8 +70,7 @@ pub struct ValkeyConfig {
 #[derive(Debug)]
 pub struct QdrantConfig {
     pub url: String,
-    /// Absent when running Qdrant locally without auth.
-    pub api_key: Option<SecretString>,
+    pub api_key: SecretString,
     pub collection_prefix: String,
 }
 
@@ -98,31 +86,19 @@ pub struct GitHubAppConfig {
     pub app_id: u64,
     pub client_id: String,
     pub client_secret: SecretString,
-    /// PEM contents, not a path — see `load_private_key`.
     pub private_key_pem: SecretString,
     pub webhook_secret: SecretString,
-    /// Derived from `public_url`; not its own env var, so the two can never
-    /// drift apart. The path is fixed by the router.
+
     pub redirect_uri: String,
 }
 
 #[derive(Debug)]
 pub struct SessionConfig {
-    /// `__Host-session` in production. Configurable because the `__Host-` prefix
-    /// requires `Secure`, and dev over plain http may need a fallback —
-    /// AUTHENTICATION.md §Session Cookie insists this be a config decision, not
-    /// a `#[cfg(debug_assertions)]` one.
     pub cookie_name: String,
-    /// Hard cap. A session dies this long after login regardless of activity.
     pub absolute_ttl: Duration,
-    /// Sliding idle timeout, refreshed while the user is active.
     pub idle_ttl: Duration,
-    /// Only refresh the idle TTL if `last_seen_at` is older than this. Without
-    /// it, every authenticated request costs a Valkey write.
     pub refresh_threshold: Duration,
 }
-
-// ─── Loading ─────────────────────────────────────────────────────────────────
 
 impl AppConfig {
     pub fn from_env() -> Result<Self, ConfigError> {
@@ -130,11 +106,12 @@ impl AppConfig {
             .unwrap_or_else(|| "http://localhost:3001".to_owned())
             .trim_end_matches('/')
             .to_owned();
+        let bind_addr = parsed_or("BIND_ADDR", "0.0.0.0:8080")?;
 
         let config = Self {
             server: ServerConfig {
-                bind_addr: parsed_or("BIND_ADDR", "0.0.0.0:8080")?,
-                public_url: public_url.clone(),
+                bind_addr,
+                public_url,
                 static_dir: optional("STATIC_DIR")
                     .unwrap_or_else(|| "../frontend/out".to_owned())
                     .into(),
@@ -150,7 +127,7 @@ impl AppConfig {
             },
             qdrant: QdrantConfig {
                 url: required("QDRANT_URL")?,
-                api_key: optional("QDRANT_API_KEY").map(SecretString::from),
+                api_key: secret("QDRANT_API_KEY")?,
                 collection_prefix: optional("QDRANT_COLLECTION_PREFIX")
                     .unwrap_or_else(|| "justaskrepo".to_owned()),
             },
@@ -167,7 +144,7 @@ impl AppConfig {
                 client_secret: secret("GITHUB_CLIENT_SECRET")?,
                 private_key_pem: load_private_key()?,
                 webhook_secret: secret("GITHUB_WEBHOOK_SECRET")?,
-                redirect_uri: format!("{public_url}/api/auth/github/callback"),
+                redirect_uri: format!("http://{bind_addr}/api/auth/github/callback"),
             },
             session: SessionConfig {
                 cookie_name: optional("SESSION_COOKIE_NAME")
@@ -182,8 +159,6 @@ impl AppConfig {
         Ok(config)
     }
 
-    /// Cross-field checks that no single `parse` can catch. These are the bugs
-    /// that otherwise surface as "why did my session die after an hour".
     fn validate(&self) -> Result<(), ConfigError> {
         if self.session.idle_ttl > self.session.absolute_ttl {
             return Err(ConfigError::Inconsistent(
@@ -201,9 +176,6 @@ impl AppConfig {
             ));
         }
 
-        // `__Host-` cookies require Secure, which browsers only honour on https
-        // or on localhost. Catch the mismatch here rather than as a silent
-        // "login does nothing" in staging.
         let secure_origin = self.server.public_url.starts_with("https://")
             || self.server.public_url.starts_with("http://localhost")
             || self.server.public_url.starts_with("http://127.0.0.1");
@@ -221,9 +193,6 @@ impl AppConfig {
     }
 }
 
-/// The App private key arrives one of two ways: base64 in an env var (prod,
-/// where a PEM's newlines make a plain env var painful) or a file path (dev,
-/// where GitHub hands you a `.pem` download).
 fn load_private_key() -> Result<SecretString, ConfigError> {
     if let Some(encoded) = optional("GITHUB_APP_PRIVATE_KEY_B64") {
         let bytes = BASE64.decode(encoded.trim()).map_err(|e| {
@@ -252,10 +221,6 @@ fn load_private_key() -> Result<SecretString, ConfigError> {
         "GITHUB_APP_PRIVATE_KEY_B64 or GITHUB_APP_PRIVATE_KEY_PATH",
     ))
 }
-
-// ─── Primitives ──────────────────────────────────────────────────────────────
-//
-// Every env read in the crate funnels through these four.
 
 fn optional(key: &'static str) -> Option<String> {
     match std::env::var(key) {
