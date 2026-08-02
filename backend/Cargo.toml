@@ -6,10 +6,13 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.102"
 axum = { version = "0.8.9", features = ["macros"] }
+axum-extra = {version = "0.12.6", features = ["cookie"] }
 base64 = "0.23.0"
 chrono = { version = "0.4.45", features = ["serde"] }
+deadpool-redis = "0.23.0"
 dotenvy = "0.15.7"
 qdrant-client = "1.18.0"
+rand = "0.10.2"
 reqwest = { version = "0.13.3", features = ["json", "rustls"] }
 secrecy = "0.10.3"
 serde = { version = "1.0.228", features = ["derive"] }

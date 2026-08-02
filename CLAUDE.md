@@ -1,14 +1,14 @@
 # JustAskRepo — Claude Instructions
 
-> This file configures Claude's behavior for this codebase.  
+> This file configures Claude's behavior for this codebase.
 > Read `ARCHITECTURE.md` and all files in `ADR/` before making any code changes.
 
 ---
 
 ## Project Summary
 
-JustAskRepo is a Rust backend (FastAPI being migrated to Rust) + Next.js 16 frontend.  
-Backend: Rust, Axum, SQLx (Postgres), Qdrant, Gemini API, GitHub App.  
+JustAskRepo is a Rust backend (FastAPI being migrated to Rust) + Next.js 16 frontend.
+Backend: Rust, Axum, SQLx (Postgres), Qdrant, Gemini API, GitHub App.
 Frontend: Next.js 16, TypeScript.
 
 The backend follows a **Modular Monolith** architecture. Every architectural decision is documented in `backend/ARCHITECTURE.md` and `backend/ADR/`.
@@ -69,7 +69,7 @@ handle_index_repo(IndexRepoCommand { repo_full_name: repo_name, ... }, ctx).awai
 
 Naming conventions (strictly enforced):
 - Commands: `<Verb><Noun>Command`
-- Queries: `Get<Noun>Query` or `List<Noun>Query`  
+- Queries: `Get<Noun>Query` or `List<Noun>Query`
 - Handlers: `handle_<verb>_<noun>` (all async)
 - Responses: `<Noun>Response`
 
@@ -146,6 +146,7 @@ If asked to do any of the following, decline and suggest the correct approach:
 - Tracing: use `tracing::instrument` on all command/query handlers
 - All Commands and Queries derive `Debug`
 - Never `unwrap()` or `expect()` in production paths — always propagate with `?`
+- Do not add too many comments in the code
 
 ---
 

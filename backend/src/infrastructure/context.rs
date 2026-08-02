@@ -20,6 +20,7 @@ use super::config::AppConfig;
 #[derive(Clone)]
 pub struct AppContext {
     pub db: PgPool,
+    pub valkey: deadpool_redis::Pool,
     pub started_at: Instant,
     // TODO(valkey): sessions, oauth state, rate limits. Blocked on picking a
     //   client crate — see AUTHENTICATION.md §Data Model.
@@ -32,8 +33,10 @@ impl AppContext {
     /// only moves the outage to the first user request.
     pub async fn new(config: &AppConfig) -> anyhow::Result<Self> {
         let db = super::db::connect_db(&config.database).await?;
+        let valkey = super::valkey::connect_valkey(&config.valkey).await?;
         Ok(Self {
             db,
+            valkey,
             started_at: Instant::now(),
         })
     }
