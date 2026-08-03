@@ -107,6 +107,7 @@ impl AppConfig {
             .trim_end_matches('/')
             .to_owned();
         let bind_addr = parsed_or("BIND_ADDR", "0.0.0.0:8080")?;
+        let redirect_uri = format!("{public_url}/api/auth/github/callback");
 
         let config = Self {
             server: ServerConfig {
@@ -144,7 +145,7 @@ impl AppConfig {
                 client_secret: secret("GITHUB_CLIENT_SECRET")?,
                 private_key_pem: load_private_key()?,
                 webhook_secret: secret("GITHUB_WEBHOOK_SECRET")?,
-                redirect_uri: format!("http://{bind_addr}/api/auth/github/callback"),
+                redirect_uri,
             },
             session: SessionConfig {
                 cookie_name: optional("SESSION_COOKIE_NAME")

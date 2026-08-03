@@ -30,6 +30,9 @@ async fn main() -> Result<()> {
     // 2. Context — pools and shared handles, built once and cloned everywhere.
     let ctx = AppContext::new(&config).await?;
 
+    sqlx::migrate!().run(&ctx.db).await?;
+    info!("database migrations applied");
+
     // 3. Event subscriptions.
     //    TODO: modules::auth::subscribe(&ctx) etc. once the event bus exists.
     //    Prefer returning JoinHandles so shutdown can await them — cheap now,
