@@ -104,6 +104,33 @@ Notes:
 - Reset a wedged dev environment with
   `docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v`.
 
+### Checks
+
+Enable the git hooks once per clone — git does not pick up `.githooks/` on its own:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`pre-commit` then runs the same checks CI runs, scoped to what you staged: a
+frontend-only commit never compiles Rust, and vice versa.
+
+| | backend | frontend |
+| --- | --- | --- |
+| lint | `cargo fmt --check`, `cargo clippy -D warnings` | `eslint` |
+| types | — | `tsc --noEmit` |
+| tests | `cargo test` | — |
+
+Checks run against the working tree, not the staged snapshot, so a partially
+staged file is verified as it exists on disk. Bypass with `git commit --no-verify`
+(or `SKIP_HOOKS=1`) when you need to land a WIP commit.
+
+CI (`.github/workflows/ci.yml`) is one workflow with a backend job and a frontend
+job, on PRs into `main` or `dev` and on pushes to `main`. It adds `next build` on
+top of the hook's checks. The Rust toolchain is pinned in
+`backend/rust-toolchain.toml` so `cargo fmt` cannot disagree between your machine
+and the runner.
+
 ---
 
 ## Status
