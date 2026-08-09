@@ -21,7 +21,9 @@ use super::AppContext;
 /// A route registered outside `/api` is unreachable in development.
 pub fn router(ctx: AppContext) -> Router {
     // Public — no session required.
-    let public = Router::new().merge(routes::health::routes());
+    let public = Router::new()
+        .merge(routes::health::routes())
+        .merge(routes::auth::routes());
 
     // Authenticated — every route below the session layer.
     //

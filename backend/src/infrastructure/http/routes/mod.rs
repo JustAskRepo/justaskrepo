@@ -8,6 +8,6 @@
 // privilege and the escape hatch for cross-module flows (ARCHITECTURE.md §5.1).
 // A module may not.
 
+pub mod auth;
 pub mod health;
-
-// TODO: auth.rs, repositories.rs, chat.rs, webhooks.rs — as each module lands.
+// TODO: repositories.rs, chat.rs, webhooks.rs — as each module lands.

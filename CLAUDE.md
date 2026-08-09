@@ -86,9 +86,9 @@ pub(super)    // application/ accessing domain/ within same module
 ## When Adding a New Module
 
 1. **Copy `backend/MODULE_TEMPLATE/`** to `backend/src/modules/<new_name>/`
-2. **Create an ADR** in `backend/ADR/ADR-00N-<title>.md` documenting why the module exists and its public API surface
-3. **Register in `main.rs`**: add the module's event subscriptions and HTTP routes
-4. **Update `backend/ARCHITECTURE.md`**: add the module to the module table with its owned data, emitted events, and subscriptions
+2. **Register in `main.rs`**: add the module's event subscriptions and HTTP routes
+3. **Update `backend/ARCHITECTURE.md`**: add the module to the module table with its owned data, emitted events, and subscriptions. Document the public surface in `api.rs` doc comments — `api.rs` is the source of truth for the contract, not a copy in an ADR.
+4. **Create an ADR only if the module embodies a non-obvious decision** — an auth model, a storage choice, a boundary that had a real alternative worth recording (e.g. sessions-in-Valkey vs. JWTs; auth as a module vs. middleware). A module's *mere existence* is not ADR-worthy; a self-justifying module (it obviously had to exist) needs no ADR. See ADR-005 Layer 3.
 
 ---
 

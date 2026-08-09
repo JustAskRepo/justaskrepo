@@ -3,13 +3,9 @@ use serde::Serialize;
 
 use crate::infrastructure::AppContext;
 
-
-
 pub fn routes() -> Router<AppContext> {
-    Router::new()
-        .route("/health", get(liveness))
+    Router::new().route("/health", get(liveness))
 }
-
 
 #[derive(Serialize)]
 struct LivenessResponse {
