@@ -4,8 +4,7 @@
 // All Commands, Queries, and their handler functions live here.
 // Handlers are thin — they delegate to application/ use cases.
 
-use crate::shared_kernel::{error::AppError, AppContext};
-
+use crate::{infrastructure::AppContext, shared_kernel::error::AppError};
 // ─── Commands ────────────────────────────────────────────────────────────────
 
 /// Intent to <describe write operation>.

@@ -2,7 +2,8 @@
 # Rust
 # ========================
 target/
-Cargo.lock
+# Cargo.lock is committed: this crate is a binary, and CI must resolve the same
+# dependency versions the developers built against.
 **/*.rs.bk
 *.pdb
 
@@ -43,10 +44,7 @@ github-app.pem
 .DS_Store
 Thumbs.db
 
-# ========================
-# Editor
-# ========================
-.vscode/
+
 .idea/
 *.swp
 *.swo
@@ -55,3 +53,4 @@ Thumbs.db
 *.exe
 
 extras/
+extra/

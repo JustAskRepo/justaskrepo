@@ -1,17 +1,25 @@
 # JustAskRepo — Claude Instructions
 
-> This file configures Claude's behavior for this codebase.  
+> This file configures Claude's behavior for this codebase.
 > Read `ARCHITECTURE.md` and all files in `ADR/` before making any code changes.
 
 ---
 
 ## Project Summary
 
-JustAskRepo is a Rust backend (FastAPI being migrated to Rust) + Next.js 15 frontend.  
-Backend: Rust, Axum, SQLx (Postgres), Qdrant, OpenAI API, GitHub App.  
-Frontend: Next.js 15, NextAuth v5, TypeScript.
+JustAskRepo is a Rust backend (FastAPI being migrated to Rust) + Next.js 16 frontend.
+Backend: Rust, Axum, SQLx (Postgres), Qdrant, Gemini API, GitHub App.
+Frontend: Next.js 16, TypeScript.
 
 The backend follows a **Modular Monolith** architecture. Every architectural decision is documented in `backend/ARCHITECTURE.md` and `backend/ADR/`.
+
+---
+
+## When Suggesting or Deciding
+
+**Think about where this is going, not just where it is.** Weigh every suggestion, addition, and design call against the project's future goals — not only the current state of the codebase. A choice that is convenient for today's five files and painful at fifty is the wrong choice; say so, and propose the one that holds up.
+
+This applies to the whole repo, backend and frontend alike.
 
 ---
 
@@ -61,7 +69,7 @@ handle_index_repo(IndexRepoCommand { repo_full_name: repo_name, ... }, ctx).awai
 
 Naming conventions (strictly enforced):
 - Commands: `<Verb><Noun>Command`
-- Queries: `Get<Noun>Query` or `List<Noun>Query`  
+- Queries: `Get<Noun>Query` or `List<Noun>Query`
 - Handlers: `handle_<verb>_<noun>` (all async)
 - Responses: `<Noun>Response`
 
@@ -78,9 +86,9 @@ pub(super)    // application/ accessing domain/ within same module
 ## When Adding a New Module
 
 1. **Copy `backend/MODULE_TEMPLATE/`** to `backend/src/modules/<new_name>/`
-2. **Create an ADR** in `backend/ADR/ADR-00N-<title>.md` documenting why the module exists and its public API surface
-3. **Register in `main.rs`**: add the module's event subscriptions and HTTP routes
-4. **Update `backend/ARCHITECTURE.md`**: add the module to the module table with its owned data, emitted events, and subscriptions
+2. **Register in `main.rs`**: add the module's event subscriptions and HTTP routes
+3. **Update `backend/ARCHITECTURE.md`**: add the module to the module table with its owned data, emitted events, and subscriptions. Document the public surface in `api.rs` doc comments — `api.rs` is the source of truth for the contract, not a copy in an ADR.
+4. **Create an ADR only if the module embodies a non-obvious decision** — an auth model, a storage choice, a boundary that had a real alternative worth recording (e.g. sessions-in-Valkey vs. JWTs; auth as a module vs. middleware). A module's *mere existence* is not ADR-worthy; a self-justifying module (it obviously had to exist) needs no ADR. See ADR-005 Layer 3.
 
 ---
 
@@ -111,7 +119,7 @@ Any change to a module's `api.rs` that modifies public types or removes/renames 
 | Business rule / invariant | `modules/<name>/domain/` |
 | Use case orchestration | `modules/<name>/application/commands/` or `queries/` |
 | Database query | `modules/<name>/infrastructure/<repo>.rs` |
-| External API call (OpenAI, GitHub) | `modules/<name>/infrastructure/<client>.rs` |
+| External API call (Gemini, GitHub) | `modules/<name>/infrastructure/<client>.rs` |
 | Domain event definition | `modules/<name>/domain/events.rs` |
 | Event handler (reaction to another module's event) | `modules/<name>/application/events/` |
 | HTTP route handler | `main.rs` (thin, just calls api.rs handler) |
@@ -138,14 +146,16 @@ If asked to do any of the following, decline and suggest the correct approach:
 - Tracing: use `tracing::instrument` on all command/query handlers
 - All Commands and Queries derive `Debug`
 - Never `unwrap()` or `expect()` in production paths — always propagate with `?`
+- Do not add too many comments in the code
 
 ---
 
 ## Helpful Context
 
-- Monorepo: `backend/` (Rust), `frontend/` (Next.js 15)
-- Auth: GitHub OAuth via NextAuth v5 on frontend; GitHub App installation tokens on backend
+- Monorepo: `backend/` (Rust), `frontend/` (Next.js 16)
+- Auth: GitHub OAuth on frontend (flow not yet implemented — no auth library currently installed); GitHub App installation tokens on backend
 - Vector DB: Qdrant (self-hosted or cloud) — accessed only from `indexing` module's infrastructure layer
 - Chunking: Tree-sitter for code-aware chunking — only in `indexing` module
-- LLM: OpenAI API — only in `chat` module's infrastructure layer
+- LLM: Gemini API — only in `chat` module's infrastructure layer
+- Embeddings: Gemini Embeddings API — only in `indexing` module's infrastructure layer
 - Load the /rust skill. Don't follow C/C++/Go norms.

@@ -1,0 +1,10 @@
+# Run `bacon run` (or `bacon` then press the job shortcut) to use this.
+default_job = "run"
+
+[jobs.run]
+command = ["cargo", "run", "--color", "always"]
+need_stdout = true          # a server writes to stdout; show it
+allow_warnings = true       # don't block startup on warnings
+background = false           # keep it in the foreground job pane
+on_change_strategy = "kill_then_restart"
+watch = ["src", "Cargo.toml", "../.env"]

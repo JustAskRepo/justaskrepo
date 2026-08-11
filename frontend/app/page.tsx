@@ -1,6 +1,6 @@
-import GitHubButton from "./components/github-button";
-import AskTerminal from "./components/ask-terminal";
-import Reveal from "./components/reveal";
+import GitHubButton from "@/components/github-button";
+import AskTerminal from "@/components/ask-terminal";
+import Reveal from "@/components/reveal";
 
 /* ------------------------------------------------------------------ */
 /*  Small inline icons                                                 */
@@ -129,14 +129,6 @@ export default function Home() {
         <nav className="hidden items-center gap-8 text-sm text-muted sm:flex">
           <a href="#features" className="transition-colors hover:text-ink">Features</a>
           <a href="#how" className="transition-colors hover:text-ink">How it works</a>
-          <a
-            href="https://github.com"
-            target="_blank"
-            rel="noreferrer"
-            className="transition-colors hover:text-ink"
-          >
-            GitHub
-          </a>
         </nav>
         <GitHubButton size="sm" className="hidden sm:inline-flex" />
       </header>

@@ -16,7 +16,7 @@ const EXCHANGES: Exchange[] = [
   },
   {
     q: "what does the indexing pipeline do?",
-    a: "It clones the repo, splits code with Tree-sitter, embeds each chunk with OpenAI, then upserts the vectors into Qdrant.",
+    a: "It clones the repo, splits code with Tree-sitter, embeds each chunk with Gemini, then upserts the vectors into Qdrant.",
     cite: "modules/indexing/api.rs",
   },
   {

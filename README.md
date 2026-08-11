@@ -8,26 +8,46 @@ JustAskRepo lets you connect a GitHub repository and ask questions about it in p
 
 ## Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js 15 + NextAuth v5 |
-| Backend | Rust + Axum |
-| Parsing | Tree-sitter (Rust bindings) |
-| Vector Store | Qdrant |
-| Embeddings | Gemini Embeddings API |
-| LLM | Gemini |
-| Database | PostgreSQL |
+| Layer              | Technology                  |
+| ------------------ | --------------------------- |
+| Frontend           | Next.js 16 + TypeScript     |
+| Backend            | Rust + Axum                 |
+| Parsing            | Tree-sitter (Rust bindings) |
+| Vector Store       | Qdrant (Qdrant Cloud)       |
+| Embeddings         | Gemini Embeddings API       |
+| LLM                | Gemini                      |
+| Database           | PostgreSQL (Neon)           |
+| Cache / Queue      | Valkey (self-hosted)        |
 | GitHub Integration | GitHub App (OAuth + Webhooks) |
 
 ---
 
-## Structure
+## Architecture
+
+The backend is structured as a **modular monolith** — a single crate and single deployable binary, organized into domain-bounded modules with enforced boundaries between them. Each module owns its own domain, application, and infrastructure layers, and is reachable only through its `api.rs` Command/Query surface. Modules never call each other directly; state changes propagate as domain events over an in-memory event bus. This keeps the operational simplicity of one service while preserving clean separation of concerns, and leaves the door open to extracting a module into its own service later.
 
 ```
 justaskrepo/
-├── frontend/     # Next.js 15 web app
-└── backend/      # Rust + Axum API server
+├── frontend/                     # Next.js 16 web app
+└── backend/                      # Rust + Axum (single `backend` crate)
+    ├── ARCHITECTURE.md           # Software Architecture Document
+    ├── ADR/                      # Architecture Decision Records (ADR-001…006)
+    ├── MODULE_TEMPLATE/          # scaffold to copy when adding a module
+    └── src/
+        ├── main.rs               # composition root: routes + event subscriptions
+        ├── modules/
+        │   ├── auth/             # GitHub OAuth, session management
+        │   ├── installations/    # GitHub App installations, repo access
+        │   ├── indexing/         # cloning, Tree-sitter chunking, embedding, Qdrant
+        │   ├── chat/             # RAG pipeline, conversations, LLM calls
+        │   └── webhooks/         # webhook ingestion, signature verification, routing
+        ├── shared_kernel/        # primitives only: types, errors, DomainEvent trait
+        └── infrastructure/       # cross-cutting: db pool, config, event bus
 ```
+
+Every module has the same four layers — `api.rs`, `domain/`, `application/`, `infrastructure/` — with no exceptions. See `backend/ARCHITECTURE.md` for the module responsibility table and `backend/ADR/` for the reasoning behind each rule.
+
+> Module scaffolding is in progress: `MODULE_TEMPLATE/` is the canonical starting point for each of the modules listed above.
 
 ---
 
@@ -41,6 +61,78 @@ justaskrepo/
 
 ---
 
+## How it works
+
+1. **Connect** — install the GitHub App on a repository for fine-grained, per-install access.
+2. **Index** — the `indexing` module clones the repo, parses source with Tree-sitter into AST-aware chunks that respect function and module boundaries, and generates embeddings via the Gemini Embeddings API.
+3. **Store** — chunks and their vectors land in Qdrant; metadata lives in PostgreSQL. Valkey caches hot data (embeddings, repeated query results, GitHub API responses) and backs an async job queue so repo indexing runs off the request path.
+4. **Retrieve** — queries run through a hybrid pipeline combining BM25 keyword matching with vector similarity, returning semantically coherent code units.
+5. **Answer** — retrieved context grounds a Gemini-powered chat interface that responds with relevant code.
+
+---
+
+## Development
+
+Copy `.env.example` to `.env` and fill in the Neon, Qdrant Cloud, and Gemini values, then:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+Open **http://localhost:3001** — not 8080. In dev the Next dev server owns the browser
+origin and proxies `/api/*` to Axum (via the `rewrites` block in `next.config.ts`, which
+reads `AXUM_DEV_URL`), so the app still sees a single origin and session cookies behave
+the same as in production. Both halves hot-reload: `cargo watch` rebuilds the Rust binary
+on save, Turbopack does HMR for the frontend.
+
+Production is the inverse and runs from the base file alone:
+
+```bash
+docker compose up --build     # single binary on :8080, SPA baked in
+```
+
+Notes:
+
+- **Postgres and Qdrant are managed** (Neon / Qdrant Cloud), so dev talks to real remote
+  services. Point `DATABASE_URL` at a Neon branch if you want isolation from prod data.
+  Only Valkey runs locally.
+- **Cargo artifacts live in a named volume** (`cargo-target`), not `backend/target`. The
+  host target dir is built against Fedora's glibc and would thrash against Debian's inside
+  the container. First boot compiles from scratch; later ones are incremental.
+- **Bind mounts use `:z`** because SELinux is enforcing. Without the label the containers
+  get permission denied on the mounted source.
+- Reset a wedged dev environment with
+  `docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v`.
+
+### Checks
+
+Enable the git hooks once per clone — git does not pick up `.githooks/` on its own:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`pre-commit` then runs the same checks CI runs, scoped to what you staged: a
+frontend-only commit never compiles Rust, and vice versa.
+
+| | backend | frontend |
+| --- | --- | --- |
+| lint | `cargo fmt --check`, `cargo clippy -D warnings` | `eslint` |
+| types | — | `tsc --noEmit` |
+| tests | `cargo test` | — |
+
+Checks run against the working tree, not the staged snapshot, so a partially
+staged file is verified as it exists on disk. Bypass with `git commit --no-verify`
+(or `SKIP_HOOKS=1`) when you need to land a WIP commit.
+
+CI (`.github/workflows/ci.yml`) is one workflow with a backend job and a frontend
+job, on PRs into `main` or `dev` and on pushes to `main`. It adds `next build` on
+top of the hook's checks. The Rust toolchain is pinned in
+`backend/rust-toolchain.toml` so `cargo fmt` cannot disagree between your machine
+and the runner.
+
+---
+
 ## Status
 
-Actively under development. Hobby project — no deadlines, built for learning and fun.
+Actively under development.

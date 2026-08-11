@@ -1,0 +1,12 @@
+# Build artifacts and deps — regenerated inside the image
+**/target/
+**/node_modules/
+**/.next/
+**/out/
+
+# VCS, secrets, docs
+.git
+.gitignore
+**/.env
+**/.env.*
+**/*.md

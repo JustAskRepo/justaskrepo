@@ -1,6 +1,6 @@
 # JustAskRepo — Architecture Documentation
 
-> **Last Updated:** 2026-06-13  
+> **Last Updated:** 2026-08-01  
 > **Status:** Active  
 > **Architect:** Arya Sharma
 
@@ -11,6 +11,25 @@
 JustAskRepo is an AI-powered tool that lets users chat with any GitHub repository using Retrieval-Augmented Generation (RAG). Users authenticate via GitHub OAuth, install a GitHub App on a repository, and then query that repository's code through a conversational interface.
 
 This document is the **Software Architecture Document (SAD)** for the Rust backend. It captures architectural decisions, module boundaries, integration styles, and enforcement mechanisms. Every decision here has a corresponding ADR in `ADR/`.
+
+### 1.1 Deployment Shape
+
+The system ships as **one binary serving one origin**. This is architecturally significant, so it belongs here rather than only in the deployment config:
+
+- The frontend is a **Next.js static export** (`output: "export"`). There is no Next.js server in production and no BFF layer.
+- **Axum serves both**: the exported UI at `/` via `ServeDir`, and the API under `/api/*`.
+- In development, the Next dev server on `:3001` rewrites `/api/*` to Axum, reproducing the single origin. Dev is accessed at `:3001`, never `:8080` directly.
+
+**Consequences for the backend:**
+
+| Because | The backend |
+|---|---|
+| UI and API share an origin | needs **no CORS layer** — adding one would only widen surface area |
+| The browser calls Axum directly | is the **only** place auth decisions happen; there is no server-side layer in front of it |
+| `/` serves static files | must mount every route under `/api` — an unprefixed route is unreachable through the dev proxy |
+| Axum 0.8 dropped implicit trailing-slash matching | pairs with `skipTrailingSlashRedirect` in `next.config.ts` so dev and prod see identical paths |
+
+See `AUTHENTICATION.md` §Same-Origin Model for the security consequences.
 
 ---
 
@@ -44,29 +63,47 @@ Modules do **not** share:
 ## 3. System Modules
 
 ```
-backend/src/
-├── modules/
-│   ├── auth/           # GitHub OAuth, session management
-│   ├── installations/  # GitHub App installations, repo access
-│   ├── indexing/       # Repo cloning, Tree-sitter chunking, embedding, Qdrant storage
-│   ├── chat/           # RAG pipeline, conversation management, OpenAI calls
-│   └── webhooks/       # GitHub App webhook ingestion, event routing
-├── shared_kernel/      # Primitives shared across all modules (no business logic)
-│   ├── domain_events.rs
-│   ├── error.rs
-│   └── types.rs
-├── infrastructure/     # Cross-cutting infra (DB pool, HTTP client, config)
-│   ├── db.rs
-│   ├── config.rs
-│   └── event_bus.rs
-└── main.rs
+backend/
+├── src/
+│   ├── modules/
+│   │   ├── auth/           # GitHub OAuth, session management
+│   │   ├── installations/  # GitHub App installations, repo access
+│   │   ├── indexing/       # Repo cloning, Tree-sitter chunking, embedding, Qdrant storage
+│   │   ├── chat/           # RAG pipeline, conversation management, Gemini calls
+│   │   └── webhooks/       # GitHub App webhook ingestion, event routing
+│   ├── shared_kernel/      # Primitives shared across all modules (no business logic)
+│   │   ├── mod.rs          # AppContext (the DI container)
+│   │   ├── domain_events.rs
+│   │   ├── error.rs        # AppError — framework-free, no axum types
+│   │   └── types.rs
+│   ├── infrastructure/     # Cross-cutting infra — machinery, not domain
+│   │   ├── config.rs       # AppConfig — the ONLY file that reads env vars
+│   │   ├── db.rs           # Postgres pool
+│   │   ├── valkey.rs       # Valkey pool
+│   │   ├── event_bus.rs
+│   │   └── http/           # HTTP composition layer (see §5.1)
+│   │       ├── mod.rs      # router(ctx) -> Router
+│   │       ├── error.rs    # impl IntoResponse for AppError
+│   │       ├── middleware/ # auth middleware, tracing, rate limiting
+│   │       └── routes/     # one file per module: thin adapters to api.rs
+│   └── main.rs             # composition root: config → context → subscriptions → serve
+├── migrations/             # sqlx migrations
+└── tests/
+    └── architecture.rs     # boundary rules the compiler can't express (§8)
 ```
+
+**`shared_kernel/` vs `infrastructure/`** — the distinction that keeps both from becoming a dumping ground:
+
+- `shared_kernel/` holds **types and traits with no behaviour and no framework dependencies**. Its contents are capped by ADR-006 at four things. If a module were pulled out into its own service tomorrow, it would take `shared_kernel` with it unchanged.
+- `infrastructure/` holds **shared machinery** — pools, config, the event bus, HTTP wiring. It is composition-root code, not domain code, and would be *rewritten* rather than carried along in an extraction.
+
+Neither is a home for `utils`. Anything that fits neither belongs inside a module.
 
 ### Module Responsibilities
 
 | Module | Owns | Emits Events | Listens To |
 |---|---|---|---|
-| `auth` | User identity, sessions, GitHub tokens | `UserAuthenticatedEvent` | — |
+| `auth` | User identity, sessions, GitHub tokens | `UserAuthenticatedEvent`, `UserSessionsRevokedEvent` | `RepoUninstalledEvent` (revoke sessions on uninstall) |
 | `installations` | GitHub App installations, repo allowlist | `RepoInstalledEvent`, `RepoUninstalledEvent` | `UserAuthenticatedEvent` |
 | `indexing` | Clone queue, chunks, embeddings, Qdrant collections | `RepoIndexedEvent`, `IndexingFailedEvent` | `RepoInstalledEvent` |
 | `chat` | Conversations, messages, RAG context assembly | `ConversationCreatedEvent` | `RepoIndexedEvent` |
@@ -93,7 +130,7 @@ modules/<name>/
 │   └── events/         # Domain event handlers (subscriptions)
 └── infrastructure/
     ├── mod.rs
-    └── <repo>.rs       # DB access, external API clients (Qdrant, GitHub, OpenAI)
+    └── <repo>.rs       # DB access, external API clients (Qdrant, GitHub, Gemini)
 ```
 
 **Visibility rules (enforced by Rust compiler):**
@@ -140,10 +177,48 @@ pub async fn handle_get_index_status(
 ### Rules
 - Commands and Queries are plain structs — no framework magic
 - Commands may produce domain events; Queries never do
-- The HTTP router in `main.rs` calls these handlers directly
+- The HTTP layer calls these handlers directly
 - Modules never call each other's internal functions — only their `api.rs` handlers
 
 > See ADR-002 for the full decision record.
+
+### 5.1 The HTTP Layer and the Composition Root
+
+HTTP routes are **not** part of any module. They live in `infrastructure/http/`, which is composition-root code: it knows about every module's `api.rs` and about axum, while no module knows about either.
+
+A route handler is a thin adapter with exactly four jobs:
+
+```rust
+// infrastructure/http/routes/auth.rs
+async fn logout(
+    State(ctx): State<AppContext>,
+    session: SessionContext,          // 1. extract (middleware already validated)
+) -> Result<StatusCode, AppError> {
+    handle_logout(                    // 2. build the Command, 3. call api.rs
+        LogoutCommand { session_id: session.id },
+        &ctx,
+    ).await?;
+    Ok(StatusCode::NO_CONTENT)        // 4. map to a response
+}
+```
+
+No business logic, no DB access, no branching on domain state.
+
+**The composition root may call several modules; a module may not.** This is the escape hatch for flows that span modules without violating boundaries. The login callback is the canonical example:
+
+```rust
+// ✅ CORRECT — the route handler orchestrates two modules
+let session = handle_complete_github_login(cmd, &ctx).await?;
+let install = handle_get_installation_status(query, &ctx).await?;   // different module
+let dest = if install.has_any { "/dashboard/" } else { INSTALL_URL };
+
+// ❌ WRONG — auth reaching into installations
+// (inside modules/auth/application/) let install = installations::...
+```
+
+**Middleware follows the same rule.** The auth middleware lives in `infrastructure/http/middleware/`, not in `modules/auth/`. It calls `auth::api::handle_validate_session` like any other caller, which keeps axum types out of the `auth` module entirely.
+
+`main.rs` stays thin: load config → build `AppContext` → register event subscriptions → `serve(http::router(ctx))`.
 
 ---
 
@@ -217,6 +292,23 @@ pub struct RepoFullName(pub String);
 - Business logic of any kind
 - Module-specific types or DTOs
 - Anything that causes one module to depend on another's internals
+- **Framework types** — no `axum`, no `sqlx`, no `reqwest` in `shared_kernel`
+
+### The `AppError` split
+
+Every module returns `AppError`, but only the HTTP layer knows what an HTTP status code is. The two halves live apart:
+
+```rust
+// shared_kernel/error.rs — framework-free, thiserror
+pub enum AppError { NotFound { .. }, Unauthorized, Forbidden, Validation(..), Conflict(..), Internal(..) }
+
+// infrastructure/http/error.rs — the ONE place that maps errors to HTTP
+impl IntoResponse for AppError { .. }
+```
+
+Rust's orphan rule permits this: `AppError` is local to the crate, so a foreign trait like `IntoResponse` can be implemented for it from anywhere in the crate. The result is one error type across all modules, one status-code mapping, and a `shared_kernel` that survives the extraction path in §10 unchanged.
+
+**Duplication across modules is intended, not a failure.** Two modules needing similar-looking response DTOs is not a reason to hoist a shared type — see ADR-006 §Consequences.
 
 ---
 
@@ -229,14 +321,26 @@ Enforcement happens at three layers (defense in depth):
 - `pub(crate)` — visible across the crate but only for shared kernel types
 - `pub` — only on `api.rs` command/query handlers and shared kernel items
 
-### Layer 2: Automated Architecture Tests (`tests/architecture/`)
-Run with `cargo test --test architecture`. Fails CI if violated. Tests include:
-- No module imports another module's non-api types
-- No `infrastructure/` types leak into `domain/`
-- All domain events implement `DomainEvent` trait
-- All public functions in `api.rs` are `async`
+### Layer 2: Automated Architecture Tests (`tests/architecture.rs`)
 
-> Tests will be added once the initial module scaffolding is in place.
+Run with `cargo test --test architecture`. Fails CI if violated. These are **source-text tests** — they walk `src/` and assert on what the files contain. They need no compilation of the code under test and no test fixtures, which is why they can exist before the modules do.
+
+| # | Rule | Detection |
+|---|---|---|
+| 1 | No module imports another module's non-`api` path | `use crate::modules::X::{domain,application,infrastructure}` outside module `X` |
+| 2 | `domain/` does not depend on `infrastructure/` | `use ...infrastructure` inside any `domain/` file |
+| 3 | `domain/` is pure — no I/O, no async | `async fn`, `sqlx`, `reqwest` in `domain/` |
+| 4 | Every `pub fn` in `api.rs` is `async` | `pub fn` not preceded by `async` |
+| 5 | `mod.rs` re-exports only `api` | any `pub use self::{domain,application,infrastructure}` |
+| 6 | Every module has all four layers | directory existence check (ADR-003) |
+| 7 | Event names are past tense and end in `Event` | struct names in `domain/events.rs` |
+| 8 | `shared_kernel/` imports nothing from `modules/` | `use crate::modules` in `shared_kernel/` |
+| 9 | `shared_kernel/` imports no framework | `axum`, `sqlx`, `reqwest` in `shared_kernel/` |
+| 10 | `std::env::var` appears only in `config.rs` | text search across `src/` |
+
+`unwrap()` / `expect()` are **not** in this list — they are denied by `[lints.clippy]` in `Cargo.toml`, which is stricter (it understands `#[cfg(test)]`) and reports at the exact span.
+
+> **Status: active from the first module.** These tests are written *before* the auth module lands, so they never have to be retrofitted against existing violations. A rule added after the code it governs is a rule with an exception list.
 
 ### Layer 3: Code Review + ADRs
 - Every PR touching module boundaries requires review against this document

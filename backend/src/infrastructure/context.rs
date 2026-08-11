@@ -1,0 +1,70 @@
+// infrastructure/context.rs
+//
+// AppContext — the dependency container handed to every Command/Query handler.
+//
+// It lives here rather than in shared_kernel/ because it holds a sqlx pool, and
+// architecture rule 9 keeps framework types out of shared_kernel. That is the
+// right split: shared_kernel is what a module would carry with it if it were
+// extracted into its own service; a connection pool is what it would leave
+// behind and rebuild.
+//
+// Clone is cheap by construction — every field is an Arc or an already-shared
+// handle. That is what lets axum hold it as `State<AppContext>` in both route
+// handlers and middleware.
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use secrecy::SecretString;
+use sqlx::PgPool;
+
+use super::config::AppConfig;
+
+#[derive(Debug)]
+pub struct AuthContext {
+    pub cookie_name: String,
+    pub absolute_ttl: Duration,
+    pub idle_ttl: Duration,
+    pub refresh_threshold: Duration,
+    pub client_id: String,
+    pub client_secret: SecretString,
+    pub redirect_uri: String,
+}
+
+#[derive(Clone)]
+pub struct AppContext {
+    pub auth: Arc<AuthContext>,
+    pub db: PgPool,
+    pub valkey: deadpool_redis::Pool,
+    pub started_at: Instant,
+    // TODO(event_bus): infrastructure/event_bus.rs, per ADR-004.
+}
+
+impl AppContext {
+    pub async fn new(config: &AppConfig) -> anyhow::Result<Self> {
+        let db = super::db::connect_db(&config.database).await?;
+        let valkey = super::valkey::connect_valkey(&config.valkey).await?;
+        let auth = Arc::new(AuthContext::from(config));
+
+        Ok(Self {
+            auth,
+            db,
+            valkey,
+            started_at: Instant::now(),
+        })
+    }
+}
+impl From<&AppConfig> for AuthContext {
+    fn from(config: &AppConfig) -> Self {
+        Self {
+            cookie_name: config.session.cookie_name.clone(),
+            absolute_ttl: config.session.absolute_ttl,
+            idle_ttl: config.session.idle_ttl,
+            refresh_threshold: config.session.refresh_threshold,
+            client_id: config.github.client_id.clone(),
+            client_secret: config.github.client_secret.clone(),
+            redirect_uri: config.github.redirect_uri.clone(),
+        }
+    }
+}

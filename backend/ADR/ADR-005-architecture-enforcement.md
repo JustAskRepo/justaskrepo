@@ -43,8 +43,8 @@ These tests run in CI and **block merge** on failure.
 
 ## Layer 3: Code Review + ADR Process
 
-- Any PR that adds a new module requires a new ADR
-- Any PR that changes a module's `api.rs` public surface requires an updated ADR
+- A PR that adds a new module requires a new ADR **only if the module embodies a non-obvious decision** (an auth model, storage choice, or boundary with a real alternative). A self-justifying module is registered in `ARCHITECTURE.md`'s module table and documented in its `api.rs` doc comments — no ADR. Documentation existence is a judgment call and is deliberately a review gate, not an automated test (see Layer 2, which asserts *structure* only).
+- Any PR that changes a module's `api.rs` public surface updates `ARCHITECTURE.md`'s module table, and updates an ADR only where an ADR made a claim about that surface
 - PRs are reviewed against `ARCHITECTURE.md` explicitly
 - PR template includes architecture checklist (`.github/PULL_REQUEST_TEMPLATE.md`)
 
@@ -55,7 +55,8 @@ These tests run in CI and **block merge** on failure.
 | Cross-module internal import | P0 | Block merge immediately |
 | Missing layer folder | P1 | Block merge |
 | Domain event not implementing trait | P1 | Block merge |
-| Missing ADR for new module | P2 | Require before merge |
+| New module registered but not in ARCHITECTURE.md module table | P2 | Require before merge |
+| Missing ADR for a module that embodies a non-obvious decision | P2 | Require before merge |
 | api.rs handler not async | P2 | Require before merge |
 
 ## Consequences

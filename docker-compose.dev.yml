@@ -1,0 +1,17 @@
+services:
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: valkey-server --appendonly yes --save 60 1000
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  valkey-data:
