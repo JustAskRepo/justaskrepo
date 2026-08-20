@@ -17,6 +17,6 @@ pub(crate) async fn run(
 ) -> Result<String, AppError> {
     let state = generate_state::generate_state();
     oauth_state_store::store_state_valkey(&state, valkey.clone()).await?;
-    let authorize_url = github_oauth_client::get_authorize_url(&state, &auth)?;
+    let authorize_url = github_oauth_client::build_authorize_url(&state, &auth)?;
     Ok(authorize_url)
 }

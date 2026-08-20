@@ -1,9 +1,17 @@
-use axum::{Router, extract::State, response::Redirect, routing::get};
-// use serde::Serialize;
+use axum::{
+    Router,
+    extract::{Query, State},
+    response::Redirect,
+    routing::get,
+};
+use serde::Deserialize;
 
 use crate::{
     infrastructure::AppContext,
-    modules::auth::{StartGithubLoginCommand, handle_start_github_login},
+    modules::auth::{
+        CompleteGithubLoginCommand, StartGithubLoginCommand, handle_complete_github_login,
+        handle_start_github_login,
+    },
     shared_kernel::error::AppError,
 };
 
@@ -18,4 +26,28 @@ async fn github_auth(State(ctx): State<AppContext>) -> Result<Redirect, AppError
     Ok(Redirect::temporary(&res.authorize_url))
 }
 
-async fn github_auth_callback(State(_ctx): State<AppContext>) {}
+#[derive(Debug, Deserialize)]
+struct GithubCallbackQuery {
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
+}
+
+async fn github_auth_callback(
+    State(ctx): State<AppContext>,
+    Query(query): Query<GithubCallbackQuery>,
+) -> Result<Redirect, AppError> {
+    if let Some(error) = query.error {
+        tracing::warn!(%error, "github denied the oauth callback");
+        return Err(AppError::Unauthorized);
+    }
+    let (Some(code), Some(state)) = (query.code, query.state) else {
+        return Err(AppError::Validation(
+            "callback missing code or state".into(),
+        ));
+    };
+
+    let res =
+        handle_complete_github_login(CompleteGithubLoginCommand { code, state }, &ctx).await?;
+    Ok(Redirect::temporary(&res.redirect_url))
+}

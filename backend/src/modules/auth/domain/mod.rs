@@ -8,3 +8,4 @@
 
 pub(super) mod events;
 pub(super) mod generate_state;
+pub(super) mod github_profile;

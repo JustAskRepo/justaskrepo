@@ -16,10 +16,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use super::config::AppConfig;
 use secrecy::SecretString;
 use sqlx::PgPool;
-
-use super::config::AppConfig;
 
 #[derive(Debug)]
 pub struct AuthContext {
@@ -37,6 +36,7 @@ pub struct AppContext {
     pub auth: Arc<AuthContext>,
     pub db: PgPool,
     pub valkey: deadpool_redis::Pool,
+    pub http: reqwest::Client,
     pub started_at: Instant,
     // TODO(event_bus): infrastructure/event_bus.rs, per ADR-004.
 }
@@ -46,11 +46,16 @@ impl AppContext {
         let db = super::db::connect_db(&config.database).await?;
         let valkey = super::valkey::connect_valkey(&config.valkey).await?;
         let auth = Arc::new(AuthContext::from(config));
-
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .connect_timeout(Duration::from_secs(3))
+            .user_agent("justaskrepo/0.1")
+            .build()?;
         Ok(Self {
             auth,
             db,
             valkey,
+            http,
             started_at: Instant::now(),
         })
     }
