@@ -1,0 +1,9 @@
+# SQLx macros type-check against the committed .sqlx/ cache instead of opening a
+# connection at compile time. Keeps `cargo check`, rust-analyzer, and CI builds
+# independent of a reachable database.
+#
+# Re-run `cargo sqlx prepare` after adding or changing a query, and commit the
+# result alongside it. Cargo's [env] does not override an already-set variable,
+# so sqlx-cli still connects normally when it needs to.
+[env]
+SQLX_OFFLINE = "true"

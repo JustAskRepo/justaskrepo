@@ -92,7 +92,7 @@ impl GitHubUserDto {
     fn into_domain(self) -> GitHubProfile {
         GitHubProfile {
             github_user_id: GitHubId(self.id),
-            login: self.login,
+            username: self.login,
             name: self.name,
             email: self.email,
             avatar_url: self.avatar_url,

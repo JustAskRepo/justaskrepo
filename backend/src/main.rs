@@ -4,6 +4,8 @@
 // handlers, no business logic. Adding a module touches exactly two lines here:
 // one subscription, and (indirectly) one route file under infrastructure/http.
 
+use std::net::SocketAddr;
+
 use anyhow::Result;
 use justaskrepo::infrastructure::{AppContext, config::AppConfig, http};
 use tokio::net::TcpListener;
@@ -41,7 +43,12 @@ async fn main() -> Result<()> {
     // 4. Serve.
     let listener = TcpListener::bind(bind_addr).await?;
     info!(%bind_addr, %public_url, "server listening");
-    axum::serve(listener, http::router(ctx)).await?;
+
+    axum::serve(
+        listener,
+        http::router(ctx).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }
