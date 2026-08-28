@@ -1,6 +1,7 @@
 import GitHubButton from "@/components/github-button";
 import AskTerminal from "@/components/ask-terminal";
 import Reveal from "@/components/reveal";
+import Logo from "@/components/logo";
 
 /* ------------------------------------------------------------------ */
 /*  Small inline icons                                                 */
@@ -91,22 +92,6 @@ const SAMPLE_QUERIES = [
   "Find all the TODOs",
   "Which tests cover checkout?",
 ];
-
-/* ------------------------------------------------------------------ */
-/*  Brand mark                                                         */
-/* ------------------------------------------------------------------ */
-function Logo() {
-  return (
-    <span className="flex items-center gap-2.5">
-      <span className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-accent-2 font-mono text-sm font-bold text-white shadow-[0_8px_24px_-8px_rgba(139,92,246,0.8)]">
-        {"{ }"}
-      </span>
-      <span className="text-[15px] font-semibold tracking-tight text-ink">
-        JustAsk<span className="text-muted">Repo</span>
-      </span>
-    </span>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */

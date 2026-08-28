@@ -1,7 +1,8 @@
 # Authentication Architecture — JustAskRepo
 
-> **Last Updated:** 2026-08-01
-> **Status:** Active — design accepted, implementation not started
+> **Last Updated:** 2026-08-23
+> **Status:** Active — login flow implemented through session creation and cookie
+> issue. Session middleware, `/api/me`, and logout are pending.
 
 ## Overview
 
@@ -325,12 +326,13 @@ __Host-session=<random_session_id>
 The frontend never has access to the session ID. To know if the user is signed in,
 the UI calls **`GET /api/me`**, which returns the authenticated profile or `401`.
 
-> **Dev caveat — verify this early.** The `__Host-` prefix requires the `Secure`
-> attribute, and dev runs over plain `http://localhost:3001`. Chrome and Firefox
-> treat `localhost` as a trustworthy origin and *do* accept `Secure` cookies there,
-> so this is expected to work — but confirm it in both browsers before building on
-> it. If it fails, the fallback is a non-prefixed cookie name in dev only, selected
-> by config, never by `#[cfg(debug_assertions)]`.
+> **Dev caveat — resolved 2026-08-23.** The `__Host-` prefix requires the `Secure`
+> attribute, and dev runs over plain `http://localhost:3001`. Verified by hand in
+> Chrome, Firefox, and Brave: all three treat `localhost` as a trustworthy origin
+> and store the cookie. **No dev fallback is needed** — do not add one. The cookie
+> name stays config-driven via `SESSION_COOKIE_NAME` regardless, so if some future
+> browser or host breaks this, the fix is a different name in dev config, never a
+> weakened attribute set and never `#[cfg(debug_assertions)]`.
 
 ---
 
@@ -460,11 +462,14 @@ in behind the same session model without touching cookies, middleware, or logout
 
 Tracked here so they don't get lost between this document and ADR-007.
 
-- [ ] Confirm `__Host-` cookies are accepted on `http://localhost` in Chrome and Firefox
+- [x] Confirm `__Host-` cookies are accepted on `http://localhost` — verified
+      2026-08-23 in Chrome, Firefox, and Brave
 - [x] `frontend/lib/api-client.ts` — `githubLoginUrl()` aligned to `/api/auth/github`
       (also `frontend/CLAUDE.md` rule 2, `frontend/next.config.ts` comment)
-- [ ] `backend/src/main.rs` — the placeholder route is still `/api/auth/github/login`;
-      replaced when the auth module lands
+- [x] `backend/src/main.rs` — placeholder route removed; `main.rs` is now the
+      composition root only, and the real routes live in
+      `infrastructure/http/routes/auth.rs` as `/api/auth/github` and
+      `/api/auth/github/callback`
 - [ ] `frontend/lib/api-client.ts` — `getWsTicket(sessionId)` must take no argument
       (blocked on the WS-vs-SSE decision)
 - [ ] Decide the rate-limit budget for `/api/auth/github` and the callback
