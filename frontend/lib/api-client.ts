@@ -1,5 +1,6 @@
 import type {
   EnqueueIndexResponse,
+  Me,
   RepoStatus,
   RepoSummary,
   WsTicket,
@@ -134,4 +135,22 @@ export function githubLoginUrl(): string {
  */
 export function githubAppInstallUrl(): string {
   return `${API_BASE}/installations/new`;
+}
+
+/** GET /api/me — identity behind the session cookie. 401 when signed out. */
+export function getMe(): Promise<Me> {
+  return request<Me>("/me");
+}
+
+/**
+ * URL that ends the session. Navigate the browser here (a full navigation, not
+ * fetch), mirroring sign-in: Axum clears the cookie and redirects back out.
+ *
+ * NOTE: Axum does not serve this route yet — nothing sits next to
+ * `/auth/github` to drop the session, so this 404s until a logout handler is
+ * added. The frontend half of the contract lives here so that stays a
+ * backend-only change.
+ */
+export function logoutUrl(): string {
+  return `${API_BASE}/auth/logout`;
 }

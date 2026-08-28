@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import AmbientBackground from "@/components/ambient-background";
 import AppNav, { type Connection } from "@/components/app-nav";
 import InstallAppButton from "@/components/install-app-button";
+import AccountOrb from "@/features/session/AccountOrb";
 import DashboardSkeleton from "@/features/repos/DashboardSkeleton";
 import RepoFilters, { type RepoFilterValue } from "@/features/repos/RepoFilters";
 import RepoList from "@/features/repos/RepoList";
@@ -84,7 +85,7 @@ export default function DashboardPage() {
     // layer a stacking context to sit behind, without falling under the canvas.
     <div className="relative isolate min-h-screen">
       <AmbientBackground />
-      <AppNav connection={connection} />
+      <AppNav connection={connection} account={<AccountOrb repos={repos} reposError={error} />} />
 
       <main className="mx-auto w-full max-w-7xl px-6 py-10 sm:py-14">
         {/* ---------- page header ---------- */}

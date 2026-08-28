@@ -61,7 +61,17 @@ function normalize(path: string): string {
   return path.length > 1 ? path.replace(/\/+$/, "") : path;
 }
 
-export default function AppNav({ connection = "connecting" }: { connection?: Connection }) {
+export default function AppNav({
+  connection = "connecting",
+  account,
+}: {
+  connection?: Connection;
+  /**
+   * Account cluster slot. Passed in rather than imported so this file stays
+   * feature-agnostic — the header knows nothing about sessions or repositories.
+   */
+  account?: React.ReactNode;
+}) {
   const pathname = normalize(usePathname());
   const state = CONNECTION[connection];
 
@@ -95,19 +105,22 @@ export default function AppNav({ connection = "connecting" }: { connection?: Con
           })}
         </nav>
 
-        <span
-          className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs"
-          title={state.hint}
-        >
-          <span className="relative flex h-2 w-2">
-            {state.ping && (
-              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${state.dot}`} />
-            )}
-            <span className={`relative inline-flex h-2 w-2 rounded-full ${state.dot}`} />
+        <div className="flex shrink-0 items-center gap-2.5">
+          <span
+            className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs sm:flex"
+            title={state.hint}
+          >
+            <span className="relative flex h-2 w-2">
+              {state.ping && (
+                <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${state.dot}`} />
+              )}
+              <span className={`relative inline-flex h-2 w-2 rounded-full ${state.dot}`} />
+            </span>
+            <span className={state.text}>{state.label}</span>
+            <span className="sr-only">{state.hint}</span>
           </span>
-          <span className={`hidden sm:inline ${state.text}`}>{state.label}</span>
-          <span className="sr-only">{state.hint}</span>
-        </span>
+          {account}
+        </div>
       </div>
     </header>
   );

@@ -94,3 +94,20 @@ export type ChatFrame =
   | { type: "citation"; file_path: string; start_line: number; end_line: number; score: number }
   | { type: "done"; message_id: string }
   | { type: "error"; code: string; message: string };
+
+/**
+ * GET /api/me — who the current session belongs to.
+ *
+ * `user_id` and `github_id` are what Axum returns today. The profile fields are
+ * optional because the backend already stores them (`users.username`, `.name`,
+ * `.avatar_url`) but does not yet put them in `MeResponse`. The UI degrades to
+ * the GitHub id and a derived avatar until it does, and lights up on its own
+ * once the backend widens the response — no frontend change needed.
+ */
+export interface Me {
+  user_id: number;
+  github_id: number;
+  username?: string | null;
+  name?: string | null;
+  avatar_url?: string | null;
+}

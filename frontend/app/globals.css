@@ -316,3 +316,32 @@ body {
     opacity: 0.5;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Account halo + session panel                                       */
+/* ------------------------------------------------------------------ */
+
+/* A thin comet orbiting outside the status ring while any repo is mid-index.
+   It sits on its own radius so it never covers the data underneath. */
+@keyframes halo-scan {
+  to { transform: rotate(360deg); }
+}
+.animate-halo-scan {
+  animation: halo-scan 2.6s linear infinite;
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.panel-in {
+  transform-origin: top right;
+  animation: panel-in 0.2s cubic-bezier(0.22, 0.7, 0.16, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-in {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
