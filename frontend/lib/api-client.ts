@@ -143,14 +143,58 @@ export function getMe(): Promise<Me> {
 }
 
 /**
- * URL that ends the session. Navigate the browser here (a full navigation, not
- * fetch), mirroring sign-in: Axum clears the cookie and redirects back out.
- *
- * NOTE: Axum does not serve this route yet — nothing sits next to
- * `/auth/github` to drop the session, so this 404s until a logout handler is
- * added. The frontend half of the contract lives here so that stays a
- * backend-only change.
+ * For routes that answer `204` with no body. `request` cannot serve them — it
+ * always parses the response as JSON, and there is nothing to parse.
  */
-export function logoutUrl(): string {
-  return `${API_BASE}/auth/logout`;
+async function requestNoContent(path: string, init?: RequestInit): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include" });
+  } catch (cause) {
+    throw new NetworkError(path, { cause });
+  }
+  if (!res.ok) {
+    throw new ApiError(res.status, path);
+  }
+}
+
+/**
+ * POST /api/auth/logout — revoke the current session.
+ *
+ * A fetch, not a navigation. AUTHENTICATION.md §Logout Flow specifies a POST,
+ * and mutating routes carry an Origin check, so a full-page GET would be
+ * rejected rather than sign anyone out. Axum answers `204` and returns a
+ * `Max-Age=0` cookie that clears the session cookie; callers navigate on their
+ * own once this resolves.
+ *
+ * A `401` resolves instead of throwing. The route sits behind the session
+ * middleware, so an already-expired session never reaches it — and "there is no
+ * session to revoke" is precisely the state the caller asked for. Surfacing it
+ * as an error would fail the sign-out that needed no work, which is the one the
+ * user is least able to act on.
+ *
+ * `403` is deliberately *not* folded in, and `isUnauthorized` is deliberately
+ * not used: it covers 401 and 403 alike, and a 403 here is the Origin check
+ * rejecting the request as forged. Nothing was revoked, the session is still
+ * live, and reporting success would be a lie.
+ */
+export async function logout(): Promise<void> {
+  try {
+    await requestNoContent("/auth/logout", { method: "POST" });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return;
+    throw err;
+  }
+}
+
+/**
+ * POST /api/auth/logout/all — revoke every session for this user, this device
+ * included. Same `204` and same cookie clearing as `logout`.
+ *
+ * No 401 exemption here, and the asymmetry is the point: a 401 means the route
+ * never ran, so this user's *other* sessions are still alive. Resolving would
+ * report "signed out everywhere" for a device that is still signed in.
+ */
+export function logoutAll(): Promise<void> {
+  return requestNoContent("/auth/logout/all", { method: "POST" });
 }

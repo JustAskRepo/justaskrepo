@@ -8,16 +8,16 @@ JustAskRepo lets you connect a GitHub repository and ask questions about it in p
 
 ## Stack
 
-| Layer              | Technology                  |
-| ------------------ | --------------------------- |
-| Frontend           | Next.js 16 + TypeScript     |
-| Backend            | Rust + Axum                 |
-| Parsing            | Tree-sitter (Rust bindings) |
-| Vector Store       | Qdrant (Qdrant Cloud)       |
-| Embeddings         | Gemini Embeddings API       |
-| LLM                | Gemini                      |
-| Database           | PostgreSQL (Neon)           |
-| Cache / Queue      | Valkey (self-hosted)        |
+| Layer              | Technology                    |
+| ------------------ | ----------------------------- |
+| Frontend           | Next.js 16 + TypeScript       |
+| Backend            | Rust + Axum                   |
+| Parsing            | Tree-sitter (Rust bindings)   |
+| Vector Store       | Qdrant (Qdrant Cloud)         |
+| Embeddings         | Gemini Embeddings API         |
+| LLM                | Gemini                        |
+| Database           | PostgreSQL (Neon)             |
+| Cache / Queue      | Valkey (self-hosted)          |
 | GitHub Integration | GitHub App (OAuth + Webhooks) |
 
 ---
@@ -26,7 +26,7 @@ JustAskRepo lets you connect a GitHub repository and ask questions about it in p
 
 The backend is structured as a **modular monolith** — a single crate and single deployable binary, organized into domain-bounded modules with enforced boundaries between them. Each module owns its own domain, application, and infrastructure layers, and is reachable only through its `api.rs` Command/Query surface. Modules never call each other directly; state changes propagate as domain events over an in-memory event bus. This keeps the operational simplicity of one service while preserving clean separation of concerns, and leaves the door open to extracting a module into its own service later.
 
-```
+```text
 justaskrepo/
 ├── frontend/                     # Next.js 16 web app
 └── backend/                      # Rust + Axum (single `backend` crate)
@@ -115,11 +115,11 @@ git config core.hooksPath .githooks
 `pre-commit` then runs the same checks CI runs, scoped to what you staged: a
 frontend-only commit never compiles Rust, and vice versa.
 
-| | backend | frontend |
-| --- | --- | --- |
-| lint | `cargo fmt --check`, `cargo clippy -D warnings` | `eslint` |
-| types | — | `tsc --noEmit` |
-| tests | `cargo test` | — |
+|       | backend                                         | frontend       |
+| ----- | ----------------------------------------------- | -------------- |
+| lint  | `cargo fmt --check`, `cargo clippy -D warnings` | `eslint`       |
+| types | —                                               | `tsc --noEmit` |
+| tests | `cargo test`                                    | —              |
 
 Checks run against the working tree, not the staged snapshot, so a partially
 staged file is verified as it exists on disk. Bypass with `git commit --no-verify`

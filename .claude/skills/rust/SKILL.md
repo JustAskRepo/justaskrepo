@@ -359,7 +359,7 @@ pub fn new(config: Config) -> Result<Self> {
 ## Anti-Patterns to Avoid
 
 | Anti-Pattern | Better Approach |
-|--------------|-----------------|
+| -------------- | ----------------- |
 | `.unwrap()` everywhere | Use `?` operator |
 | `clone()` to satisfy borrow checker | Restructure ownership |
 | `String` parameters | Use `&str` or `impl Into<String>` |

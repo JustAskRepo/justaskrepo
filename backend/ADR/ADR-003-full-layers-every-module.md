@@ -28,7 +28,7 @@ We use **full layers for every module**, even simple ones.
 ## Layer Rules
 
 | Layer | Depends On | Never Depends On |
-|---|---|---|
+| --- | --- | --- |
 | `domain/` | nothing (pure Rust, no async, no I/O) | `application/`, `infrastructure/`, other modules |
 | `application/` | `domain/`, `shared_kernel/` | `infrastructure/` directly |
 | `infrastructure/` | `domain/`, `application/` traits | other modules' `infrastructure/` |

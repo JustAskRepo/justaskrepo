@@ -10,7 +10,7 @@ pub mod error;
 pub mod middleware;
 pub mod routes;
 
-use axum::{Router, middleware::from_fn_with_state, routing::get};
+use axum::{Router, middleware::from_fn_with_state};
 
 use super::AppContext;
 
@@ -29,8 +29,7 @@ pub fn router(ctx: AppContext) -> Router {
     //
     // `route_layer`, not `layer`: it runs only on routes that actually matched,
     // so an unknown path 404s instead of 401ing.
-    let protected = Router::new()
-        .route("/me", get(routes::auth::me))
+    let protected = routes::auth::protected_routes()
         .route_layer(from_fn_with_state(ctx.clone(), middleware::require_session));
 
     Router::new()

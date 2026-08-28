@@ -98,16 +98,19 @@ export type ChatFrame =
 /**
  * GET /api/me — who the current session belongs to.
  *
- * `user_id` and `github_id` are what Axum returns today. The profile fields are
- * optional because the backend already stores them (`users.username`, `.name`,
- * `.avatar_url`) but does not yet put them in `MeResponse`. The UI degrades to
- * the GitHub id and a derived avatar until it does, and lights up on its own
- * once the backend widens the response — no frontend change needed.
+ * The ids come from the session record; the profile is read from `users` on
+ * every call, so a GitHub rename shows up on the next request rather than
+ * whenever the 30-day session finally expires.
+ *
+ * `name` and `avatar_url` are nullable rather than optional — the backend
+ * always sends the keys, GitHub just does not always have values for them. The
+ * fallbacks in `features/session/identity.ts` exist for that, not for a missing
+ * field. `email` is stored but deliberately not sent: nothing renders it.
  */
 export interface Me {
   user_id: number;
   github_id: number;
-  username?: string | null;
-  name?: string | null;
-  avatar_url?: string | null;
+  username: string;
+  name: string | null;
+  avatar_url: string | null;
 }

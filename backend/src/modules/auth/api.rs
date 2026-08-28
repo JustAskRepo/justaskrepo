@@ -6,8 +6,10 @@
 
 use secrecy::SecretString;
 
-use crate::modules::auth::application::commands::{complete_github_login, start_github_login};
-use crate::modules::auth::application::queries::get_session;
+use crate::modules::auth::application::commands::{
+    complete_github_login, revoke_all_sessions, revoke_session, start_github_login,
+};
+use crate::modules::auth::application::queries::{get_session, get_user_profile};
 use crate::{
     infrastructure::AppContext,
     shared_kernel::{
@@ -66,6 +68,38 @@ pub async fn handle_complete_github_login(
 
     Ok(CompleteGithubLoginResponse { session_id })
 }
+// handle_revoke_session───────────────────────────────────────────────────────
+/// Carries the user id as well as the session id because revocation is two
+/// writes: drop the record, and drop its entry from that user's session index.
+/// Passing it in beats re-reading the session we are about to delete.
+#[derive(Debug)]
+pub struct RevokeSessionCommand {
+    pub session_id: SessionId,
+    pub user_id: UserId,
+}
+
+#[tracing::instrument(skip(ctx))]
+pub async fn handle_revoke_session(
+    cmd: RevokeSessionCommand,
+    ctx: &AppContext,
+) -> Result<(), AppError> {
+    revoke_session::run(cmd, ctx.valkey.clone()).await
+}
+
+// handle_revoke_all_sessions──────────────────────────────────────────────────
+#[derive(Debug)]
+pub struct RevokeAllSessionsCommand {
+    pub user_id: UserId,
+}
+
+#[tracing::instrument(skip(ctx))]
+pub async fn handle_revoke_all_sessions(
+    cmd: RevokeAllSessionsCommand,
+    ctx: &AppContext,
+) -> Result<(), AppError> {
+    revoke_all_sessions::run(cmd, ctx.valkey.clone()).await
+}
+
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
 // handle_get_session──────────────────────────────────────────────────────────
@@ -86,4 +120,28 @@ pub async fn handle_get_session(
     ctx: &AppContext,
 ) -> Result<SessionResponse, AppError> {
     get_session::run(query, ctx.auth.clone(), ctx.valkey.clone()).await
+}
+
+// handle_get_user_profile─────────────────────────────────────────────────────
+#[derive(Debug)]
+pub struct GetUserProfileQuery {
+    pub user_id: UserId,
+}
+
+#[derive(Debug)]
+pub struct UserProfileResponse {
+    pub user_id: UserId,
+    pub github_id: GitHubId,
+    pub username: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+#[tracing::instrument(skip(ctx))]
+pub async fn handle_get_user_profile(
+    query: GetUserProfileQuery,
+    ctx: &AppContext,
+) -> Result<UserProfileResponse, AppError> {
+    get_user_profile::run(query, ctx.db.clone()).await
 }

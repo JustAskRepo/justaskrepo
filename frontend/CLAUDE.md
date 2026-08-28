@@ -8,7 +8,7 @@
 > **directly**, same-origin, under `/api/*`. This structure MUST be maintained.
 > The `@/*` import alias maps to the `frontend/` root (see `tsconfig.json`).
 
-```
+```text
 frontend/
   next.config.ts                     # output:'export', images.unoptimized, trailingSlash
   app/

@@ -23,7 +23,7 @@ The system ships as **one binary serving one origin**. This is architecturally s
 **Consequences for the backend:**
 
 | Because | The backend |
-|---|---|
+| --- | --- |
 | UI and API share an origin | needs **no CORS layer** — adding one would only widen surface area |
 | The browser calls Axum directly | is the **only** place auth decisions happen; there is no server-side layer in front of it |
 | `/` serves static files | must mount every route under `/api` — an unprefixed route is unreachable through the dev proxy |
@@ -62,7 +62,7 @@ Modules do **not** share:
 
 ## 3. System Modules
 
-```
+```text
 backend/
 ├── src/
 │   ├── modules/
@@ -102,7 +102,7 @@ Neither is a home for `utils`. Anything that fits neither belongs inside a modul
 ### Module Responsibilities
 
 | Module | Owns | Emits Events | Listens To |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `auth` | User identity, sessions, GitHub tokens | `UserAuthenticatedEvent`, `UserSessionsRevokedEvent` | `RepoUninstalledEvent` (revoke sessions on uninstall) |
 | `installations` | GitHub App installations, repo allowlist | `RepoInstalledEvent`, `RepoUninstalledEvent` | `UserAuthenticatedEvent` |
 | `indexing` | Clone queue, chunks, embeddings, Qdrant collections | `RepoIndexedEvent`, `IndexingFailedEvent` | `RepoInstalledEvent` |
@@ -115,7 +115,7 @@ Neither is a home for `utils`. Anything that fits neither belongs inside a modul
 
 Every module **must** follow this exact layer structure. There are no exceptions — even thin modules like `auth` use all layers (see ADR-003).
 
-```
+```text
 modules/<name>/
 ├── mod.rs              # Public re-exports ONLY. This is the module boundary.
 ├── api.rs              # Command/Query handlers — the ONLY public API surface
@@ -190,15 +190,21 @@ A route handler is a thin adapter with exactly four jobs:
 
 ```rust
 // infrastructure/http/routes/auth.rs
-async fn logout(
+pub async fn logout(
     State(ctx): State<AppContext>,
-    session: SessionContext,          // 1. extract (middleware already validated)
-) -> Result<StatusCode, AppError> {
-    handle_logout(                    // 2. build the Command, 3. call api.rs
-        LogoutCommand { session_id: session.id },
+    jar: CookieJar,
+    user: CurrentUser,                       // 1. extract (middleware validated it)
+) -> Result<(CookieJar, StatusCode), AppError> {
+    handle_revoke_session(                   // 2. build the Command, 3. call api.rs
+        RevokeSessionCommand {
+            session_id: user.session_id,
+            user_id: user.user_id,
+        },
         &ctx,
-    ).await?;
-    Ok(StatusCode::NO_CONTENT)        // 4. map to a response
+    )
+    .await?;
+
+    Ok((jar.add(removal_cookie(&ctx.auth)), StatusCode::NO_CONTENT))  // 4. respond
 }
 ```
 
@@ -220,6 +226,26 @@ let dest = if install.has_any { "/dashboard/" } else { INSTALL_URL };
 
 `main.rs` stays thin: load config → build `AppContext` → register event subscriptions → `serve(http::router(ctx))`.
 
+### 5.2 Middleware
+
+`require_session` is the only middleware today. It does two things before a protected route runs — reject cross-origin writes, then turn the session cookie into a `CurrentUser` request extension — and it lives in `infrastructure/http/middleware/` for the same reason routes do: both are HTTP concerns, and the module they lean on must not learn what axum is. It calls `auth::api::handle_get_session` like any other caller.
+
+**Origin verification on mutating methods.** `SameSite=Lax` withholds the session cookie from cross-site sub-resource requests, but still sends it on a top-level cross-site *navigation* — which is always a GET. The unsafe methods are the remaining gap, and the `Origin` header closes it: a browser sets that header itself on every unsafe request and page script cannot forge it, so an origin that is ours is proof the request came from our own page.
+
+```rust
+// infrastructure/http/middleware/require_session.rs
+verify_origin(request.method(), request.headers(), &ctx.public_origin)?;
+```
+
+On `POST`/`PUT`/`PATCH`/`DELETE` the header must be present and equal to the origin derived from `PUBLIC_URL`, or the request is `403` — checked before the Valkey lookup, so a forged request costs nothing. A missing `Origin` on an unsafe method is a rejection, not a pass; that denies a non-browser client the ability to mutate with a session cookie alone, which is the intent.
+
+**The check sits inside the session layer, not on the router.** That placement is the decision, not an implementation detail:
+
+- Cookie authentication is what makes CSRF possible in the first place. A route that authenticates some other way has nothing to defend here.
+- `POST /api/webhooks/github` is public, cross-origin by nature, carries no cookie, and is HMAC-verified. An `Origin` check on it would only break it.
+
+The expected origin is **derived** from `PUBLIC_URL` in `config.rs`, never configured on its own. A second variable holding the same fact is a second thing to get out of sync, and out of sync here fails silently in both directions — locking out the real UI, or admitting a stranger.
+
 ---
 
 ## 6. Integration Style: In-Memory Event Bus (Messaging Dominant)
@@ -240,7 +266,7 @@ impl EventBus {
 ```
 
 ### Event Flow Example
-```
+```text
 [HTTP Request: POST /repos/:name/index]
         │
         ▼
@@ -326,7 +352,7 @@ Enforcement happens at three layers (defense in depth):
 Run with `cargo test --test architecture`. Fails CI if violated. These are **source-text tests** — they walk `src/` and assert on what the files contain. They need no compilation of the code under test and no test fixtures, which is why they can exist before the modules do.
 
 | # | Rule | Detection |
-|---|---|---|
+| --- | --- | --- |
 | 1 | No module imports another module's non-`api` path | `use crate::modules::X::{domain,application,infrastructure}` outside module `X` |
 | 2 | `domain/` does not depend on `infrastructure/` | `use ...infrastructure` inside any `domain/` file |
 | 3 | `domain/` is pure — no I/O, no async | `async fn`, `sqlx`, `reqwest` in `domain/` |
@@ -355,7 +381,7 @@ Run with `cargo test --test architecture`. Fails CI if violated. These are **sou
 ## 9. Architecture Decision Log
 
 | ADR | Title | Status |
-|---|---|---|
+| --- | --- | --- |
 | [ADR-001](ADR/ADR-001-modular-monolith.md) | Modular Monolith over Microservices | Accepted |
 | [ADR-002](ADR/ADR-002-cqrs-module-api.md) | CQRS-Style Module API (Commands & Queries) | Accepted |
 | [ADR-003](ADR/ADR-003-full-layers-every-module.md) | Full Layered Structure for Every Module | Accepted |

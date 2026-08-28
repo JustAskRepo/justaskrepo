@@ -10,3 +10,4 @@ pub(super) mod events;
 pub(super) mod github_profile;
 pub(super) mod random_token;
 pub(super) mod session;
+pub(super) mod user;

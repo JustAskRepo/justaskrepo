@@ -1,8 +1,8 @@
 # Authentication Architecture — JustAskRepo
 
-> **Last Updated:** 2026-08-23
-> **Status:** Active — login flow implemented through session creation and cookie
-> issue. Session middleware, `/api/me`, and logout are pending.
+> **Last Updated:** 2026-08-28
+> **Status:** Active — login flow, session middleware (including the `Origin` check
+> on mutating methods), `/api/me`, and both logout routes are implemented.
 
 ## Overview
 
@@ -22,9 +22,9 @@ avoids token-invalidation complexity, and keeps every auth decision on the backe
 GitHub App for repos, a single GitHub App provides:
 
 | Token | Flow | Used for |
-| --------------------------------- | --------------------------------------- | -------------------------------- |
-| **User access token** (user-to-server) | OAuth 2.0 authorization-code flow  | Login / identity — fetch profile |
-| **Installation token** (server-to-server) | App JWT → installation token     | Repository access (clone, index) |
+| --- | --- | --- |
+| **User access token** (user-to-server) | OAuth 2.0 authorization-code flow | Login / identity — fetch profile |
+| **Installation token** (server-to-server) | App JWT → installation token | Repository access (clone, index) |
 
 The login flow is the standard OAuth authorization-code flow; only the app
 *registration* differs from a plain OAuth App. The user token is used once at login
@@ -33,14 +33,14 @@ not the GitHub token.
 
 ## Technology Stack
 
-| Component             | Technology                                      |
-| --------------------- | ----------------------------------------------- |
-| Frontend (UI only)    | Next.js static export, served by Axum           |
-| Backend (auth owner)  | Rust (Axum)                                     |
-| Identity + repo access| Single GitHub App                               |
-| Session store         | Valkey (with AOF persistence)                   |
-| Persistent storage    | PostgreSQL                                      |
-| Auth mechanism        | Opaque session cookie                           |
+| Component | Technology |
+| --- | --- |
+| Frontend (UI only) | Next.js static export, served by Axum |
+| Backend (auth owner) | Rust (Axum) |
+| Identity + repo access | Single GitHub App |
+| Session store | Valkey (with AOF persistence) |
+| Persistent storage | PostgreSQL |
+| Auth mechanism | Opaque session cookie |
 
 ---
 
@@ -104,23 +104,23 @@ outside `/api` is unreachable in development.
 **Public (no auth middleware)**
 
 | Route | Purpose |
-| --------------------------------- | ---------------------------------------- |
-| `GET  /api/auth/github`           | Start login — 302 to GitHub authorize URL |
-| `GET  /api/auth/github/callback`  | OAuth callback — creates the session      |
-| `POST /api/webhooks/github`       | GitHub App webhooks (HMAC-verified, not cookie-authed) |
+| --- | --- |
+| `GET  /api/auth/github` | Start login — 302 to GitHub authorize URL |
+| `GET  /api/auth/github/callback` | OAuth callback — creates the session |
+| `POST /api/webhooks/github` | GitHub App webhooks (HMAC-verified, not cookie-authed) |
 
 **Authenticated (auth middleware runs first)**
 
 | Route | Purpose |
-| --------------------------------- | ---------------------------------------- |
-| `POST /api/auth/logout`           | Revoke the current session               |
-| `POST /api/auth/logout/all`       | Revoke every session for this user       |
-| `GET  /api/me`                    | Authenticated profile, or `401`          |
-| `GET  /api/repositories`          | Repos visible to this user               |
-| `GET  /api/repositories/{id}/status` | Index status                          |
-| `POST /api/repositories/{id}/index`  | Enqueue indexing                      |
-| `POST /api/chat/ws-ticket`        | Mint a single-use WebSocket ticket       |
-| `GET  /api/ws/chat?ticket=…`      | Chat WebSocket (ticket-authenticated)    |
+| --- | --- |
+| `POST /api/auth/logout` | Revoke the current session |
+| `POST /api/auth/logout/all` | Revoke every session for this user |
+| `GET  /api/me` | Authenticated profile, or `401` |
+| `GET  /api/repositories` | Repos visible to this user |
+| `GET  /api/repositories/{id}/status` | Index status |
+| `POST /api/repositories/{id}/index` | Enqueue indexing |
+| `POST /api/chat/ws-ticket` | Mint a single-use WebSocket ticket |
+| `GET  /api/ws/chat?ticket=…` | Chat WebSocket (ticket-authenticated) |
 
 > Axum 0.8 uses `{id}` for path parameters, not `:id`, and no longer matches
 > trailing slashes implicitly. `next.config.ts` sets `skipTrailingSlashRedirect`
@@ -197,7 +197,9 @@ Browser ── Cookie: __Host-session=<id> ──► Rust auth middleware
                                         Protected route handler
 ```
 
-Any failure → **`401 Unauthorized`**, no handler runs.
+A failed `Origin` check is **`403 Forbidden`** — the caller may well be who they
+say they are; the request just is not trustworthy. Every other failure is
+**`401 Unauthorized`**. Either way no handler runs.
 
 ---
 
@@ -212,7 +214,7 @@ POST /api/auth/logout
       ├─ Remove id from the user's session index
       ├─ Expire the cookie (Max-Age=0)
       ▼
-200 OK
+204 No Content
 ```
 
 **All sessions ("log out everywhere")**
@@ -222,10 +224,11 @@ POST /api/auth/logout/all
       │
       ├─ Read user_sessions:<user_id> (the session index)
       ├─ Delete every session:<id> in that set
-      ├─ Delete the index key itself
+      ├─ SREM exactly those ids from the index (not DEL of the key — a login
+      │  racing this write would otherwise be unindexed but still alive)
       ├─ Expire the cookie on the calling device
       ▼
-200 OK
+204 No Content
 ```
 
 The per-user index is what makes this a bounded operation instead of a keyspace scan.
@@ -235,7 +238,7 @@ It is the **only** bulk-revocation mechanism — see the note under *Data Model*
 logout:
 
 | Trigger | Action |
-| ---------------------------------- | ------------------------------------- |
+| --- | --- |
 | GitHub App uninstalled for the user | Revoke all sessions for that user |
 | User record deleted | Revoke all sessions, then delete the index |
 | Suspected theft (IP / UA anomaly) | Revoke the affected session, force re-auth |
@@ -249,16 +252,16 @@ reacts — via the event bus, never a direct call.
 
 ### PostgreSQL — `users` (durable identity only)
 
-| Column        | Description                                  |
-| ------------- | -------------------------------------------- |
-| id            | Internal user ID (primary key)               |
-| github_id     | GitHub user ID — **immutable match key**     |
-| username      | GitHub username (mutable, display only)      |
-| email         | GitHub email, if available (display only)    |
-| avatar_url    | GitHub avatar URL                            |
-| created_at    | Account creation                             |
-| updated_at    | Last profile update                          |
-| last_login_at | Last successful login (audit/support)        |
+| Column | Description |
+| --- | --- |
+| id | Internal user ID (primary key) |
+| github_id | GitHub user ID — **immutable match key** |
+| username | GitHub username (mutable, display only) |
+| email | GitHub email, if available (display only) |
+| avatar_url | GitHub avatar URL |
+| created_at | Account creation |
+| updated_at | Last profile update |
+| last_login_at | Last successful login (audit/support) |
 
 > Users are matched **only on `github_id`**. Never match on `email` or `username` —
 > both are mutable and reusable, and matching on them enables account takeover.
@@ -310,18 +313,18 @@ reacts — via the event bus, never a direct call.
 
 ## Session Cookie
 
-```
+```text
 __Host-session=<random_session_id>
 ```
 
-| Attribute  | Value    | Reason                                              |
-| ---------- | -------- | --------------------------------------------------- |
-| `__Host-`  | prefix   | Locks cookie to Secure + Path=/ + no Domain         |
-| HttpOnly   | on       | JavaScript cannot read it                           |
-| Secure     | on       | HTTPS only                                           |
-| SameSite   | Lax      | Blocks cross-site cookie sends on unsafe methods    |
-| Path       | /        | Sent to all backend routes                          |
-| Max-Age    | 30 days  | Matches absolute session cap                         |
+| Attribute | Value | Reason |
+| --- | --- | --- |
+| `__Host-` | prefix | Locks cookie to Secure + Path=/ + no Domain |
+| HttpOnly | on | JavaScript cannot read it |
+| Secure | on | HTTPS only |
+| SameSite | Lax | Blocks cross-site cookie sends on unsafe methods |
+| Path | / | Sent to all backend routes |
+| Max-Age | 30 days | Matches absolute session cap |
 
 The frontend never has access to the session ID. To know if the user is signed in,
 the UI calls **`GET /api/me`**, which returns the authenticated profile or `401`.
@@ -391,19 +394,19 @@ The single GitHub App issues two token types; both stay on the backend.
 
 ## Security Controls
 
-| Threat                     | Control                                                        |
-| -------------------------- | ------------------------------------------------------------- |
-| Login CSRF                 | One-time `state` in Valkey, verified and deleted on callback  |
-| API CSRF                   | Same-origin + `SameSite=Lax` **plus** Origin check on mutating routes |
-| Session fixation           | Fresh session ID minted on every successful login             |
-| Session theft (detection)  | `ip` / `user_agent` recorded; anomalies can force re-auth     |
-| Bulk revocation            | Per-user session index (`user_sessions:<user_id>`)            |
-| Session ID guessing        | Cryptographically secure random IDs (`rand`, ≥128 bits)       |
-| WebSocket auth             | Single-use, short-TTL ticket; never the session ID            |
-| Brute force / abuse        | Valkey rate limiting on the auth routes and APIs              |
-| Token leakage              | GitHub tokens not stored; encrypted only if ever persisted    |
-| Secrets in logs            | Secrets wrapped in `SecretString` — `Debug` prints `[REDACTED]` |
-| Transport                  | HTTPS required in production                                   |
+| Threat | Control |
+| --- | --- |
+| Login CSRF | One-time `state` in Valkey, verified and deleted on callback |
+| API CSRF | Same-origin + `SameSite=Lax` **plus** Origin check on mutating routes |
+| Session fixation | Fresh session ID minted on every successful login |
+| Session theft (detection) | `ip` / `user_agent` recorded; anomalies can force re-auth |
+| Bulk revocation | Per-user session index (`user_sessions:<user_id>`) |
+| Session ID guessing | Cryptographically secure random IDs (`rand`, ≥128 bits) |
+| WebSocket auth | Single-use, short-TTL ticket; never the session ID |
+| Brute force / abuse | Valkey rate limiting on the auth routes and APIs |
+| Token leakage | GitHub tokens not stored; encrypted only if ever persisted |
+| Secrets in logs | Secrets wrapped in `SecretString` — `Debug` prints `[REDACTED]` |
+| Transport | HTTPS required in production |
 
 ### Same-Origin Model
 
@@ -417,7 +420,9 @@ and the API at `/api/*`; the dev proxy reproduces this). Consequences:
   than a compromise; the browser has no reason to send this cookie cross-site.
 - **CSRF defense is genuinely sufficient.** `SameSite=Lax` blocks cross-site sends on
   unsafe methods, and an `Origin` check on mutating routes covers the remainder. No
-  CSRF token is needed.
+  CSRF token is needed. The `Origin` check runs inside the session
+  middleware, so it covers exactly the cookie-authenticated routes and nothing else
+  — see `ARCHITECTURE.md` §5.2.
 
 > An earlier revision of this document described Next.js and Axum as separate origins
 > requiring CORS. That described the BFF layout removed in commit `8afb83d`. If a

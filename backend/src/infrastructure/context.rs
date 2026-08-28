@@ -34,6 +34,7 @@ pub struct AuthContext {
 #[derive(Clone)]
 pub struct AppContext {
     pub auth: Arc<AuthContext>,
+    pub public_origin: Arc<str>,
     pub db: PgPool,
     pub valkey: deadpool_redis::Pool,
     pub http: reqwest::Client,
@@ -53,6 +54,7 @@ impl AppContext {
             .build()?;
         Ok(Self {
             auth,
+            public_origin: Arc::from(config.server.public_origin.as_str()),
             db,
             valkey,
             http,

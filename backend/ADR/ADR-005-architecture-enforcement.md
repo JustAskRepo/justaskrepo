@@ -18,7 +18,7 @@ We enforce architecture at three layers, each catching different violation types
 
 Rust's visibility modifiers are our first line of defense:
 
-```
+```text
 pub           → only api.rs handlers and shared_kernel items
 pub(crate)    → shared_kernel types only  
 pub(super)    → application/ accessing domain/ within same module
@@ -51,7 +51,7 @@ These tests run in CI and **block merge** on failure.
 ## Architecture Violation Severity
 
 | Violation | Severity | Action |
-|---|---|---|
+| --- | --- | --- |
 | Cross-module internal import | P0 | Block merge immediately |
 | Missing layer folder | P1 | Block merge |
 | Domain event not implementing trait | P1 | Block merge |

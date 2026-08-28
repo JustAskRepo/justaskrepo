@@ -8,8 +8,8 @@ use crate::shared_kernel::{
     types::{SessionId, UserId},
 };
 
-fn session_key(session_id: &SessionId) -> String {
-    format!("session:{}", session_id.0)
+fn session_key(session_id: &str) -> String {
+    format!("session:{session_id}")
 }
 
 fn user_index_key(user_id: i64) -> String {
@@ -31,7 +31,7 @@ pub(in crate::modules::auth) async fn create_session(
     pipe()
         .atomic()
         .cmd("SET")
-        .arg(session_key(session_id))
+        .arg(session_key(&session_id.0))
         .arg(record)
         .arg("EX")
         .arg(idle_ttl.as_secs())
@@ -58,7 +58,7 @@ pub(in crate::modules::auth) async fn load_session(
 ) -> Result<Option<Session>, AppError> {
     let mut conn = valkey.get().await.map_err(AppError::internal)?;
     let record: Option<String> = cmd("GET")
-        .arg(session_key(session_id))
+        .arg(session_key(&session_id.0))
         .query_async(&mut conn)
         .await
         .map_err(AppError::internal)?;
@@ -79,7 +79,7 @@ pub(in crate::modules::auth) async fn touch_session(
     let record = serde_json::to_string(session).map_err(AppError::internal)?;
 
     cmd("SET")
-        .arg(session_key(session_id))
+        .arg(session_key(&session_id.0))
         .arg(record)
         .arg("EX")
         .arg(idle_ttl.as_secs())
@@ -101,7 +101,7 @@ pub(in crate::modules::auth) async fn delete_session(
     pipe()
         .atomic()
         .cmd("DEL")
-        .arg(session_key(session_id))
+        .arg(session_key(&session_id.0))
         .ignore()
         .cmd("SREM")
         .arg(user_index_key(user_id.0))
@@ -112,4 +112,50 @@ pub(in crate::modules::auth) async fn delete_session(
         .map_err(AppError::internal)?;
 
     Ok(())
+}
+
+/// "Log out everywhere" — bounded by the per-user index rather than a scan of
+/// the keyspace, which is the entire reason that index exists.
+///
+/// Reads the index, deletes what it names, then removes **exactly those ids**
+/// from the index — `SREM` of what we read, not `DEL` of the whole key. A login
+/// landing between the read and the write adds its id to the same set, and
+/// dropping the key wholesale would unindex that brand-new session while
+/// leaving its record alive: still usable, but invisible to the next bulk
+/// revocation. Removing only what we saw leaves the newcomer indexed.
+#[tracing::instrument(skip_all, err)]
+pub(in crate::modules::auth) async fn delete_all_sessions(
+    user_id: UserId,
+    valkey: deadpool_redis::Pool,
+) -> Result<usize, AppError> {
+    let mut conn = valkey.get().await.map_err(AppError::internal)?;
+    let index_key = user_index_key(user_id.0);
+
+    let session_ids: Vec<String> = cmd("SMEMBERS")
+        .arg(&index_key)
+        .query_async(&mut conn)
+        .await
+        .map_err(AppError::internal)?;
+
+    // `SREM key` with no members is an error, not a no-op.
+    if session_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let mut batch = pipe();
+    let batch = batch.atomic();
+    for session_id in &session_ids {
+        batch.cmd("DEL").arg(session_key(session_id)).ignore();
+    }
+
+    batch
+        .cmd("SREM")
+        .arg(&index_key)
+        .arg(&session_ids)
+        .ignore()
+        .query_async::<()>(&mut conn)
+        .await
+        .map_err(AppError::internal)?;
+
+    Ok(session_ids.len())
 }

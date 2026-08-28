@@ -1,11 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Avatar from "@/features/session/Avatar";
 import IndexHalo from "@/features/session/IndexHalo";
 import { accountSubtitle, accountTitle } from "@/features/session/identity";
 import { STATUS_STYLE, tallyByStatus } from "@/features/repos/status";
 import { describeError } from "@/lib/errors";
-import { githubAppInstallUrl, logoutUrl } from "@/lib/api-client";
+import { githubAppInstallUrl, logout } from "@/lib/api-client";
 import type { Me, RepoSummary } from "@/types/api";
 
 /**
@@ -34,18 +35,22 @@ function ActionRow({
   icon,
   label,
   tone = "default",
+  disabled = false,
 }: {
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
   tone?: "default" | "danger";
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={`group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium transition-colors
-        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-2 ${
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-2
+        disabled:pointer-events-none disabled:opacity-50 ${
           tone === "danger"
             ? "text-muted hover:bg-danger/10 hover:text-danger"
             : "text-muted hover:bg-white/[0.06] hover:text-ink"
@@ -124,6 +129,24 @@ export default function SessionPanel({
   reposError?: Error | null;
 }) {
   const total = repos?.length ?? null;
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+
+  const handleSignOut = () => {
+    setSigningOut(true);
+    setSignOutError(null);
+    logout().then(
+      () => {
+        // Full navigation, not a router push: the session cookie is gone, so
+        // every cached client state on this page is now about a stranger.
+        window.location.href = "/";
+      },
+      (err: unknown) => {
+        setSigningOut(false);
+        setSignOutError(describeError(err).inline);
+      },
+    );
+  };
 
   return (
     <div className="panel-in w-[20rem] overflow-hidden rounded-2xl border border-white/12 bg-bg-soft shadow-[0_30px_70px_-20px_rgba(0,0,0,0.95)]">
@@ -171,16 +194,20 @@ export default function SessionPanel({
         />
         <ActionRow
           tone="danger"
-          onClick={() => {
-            window.location.href = logoutUrl();
-          }}
-          label="Sign out"
+          disabled={signingOut}
+          onClick={handleSignOut}
+          label={signingOut ? "Signing out…" : "Sign out"}
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
               <path d="M15 17l5-5-5-5M20 12H9M12 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6" />
             </svg>
           }
         />
+        {signOutError && (
+          <p role="alert" className="px-2.5 pb-1 pt-1 text-[12px] leading-relaxed text-danger">
+            {signOutError}
+          </p>
+        )}
       </div>
     </div>
   );

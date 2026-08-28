@@ -14,6 +14,7 @@ use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use secrecy::SecretString;
+use url::Url;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -51,6 +52,7 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub bind_addr: SocketAddr,
     pub public_url: String,
+    pub public_origin: String,
     pub static_dir: PathBuf,
 }
 
@@ -107,12 +109,14 @@ impl AppConfig {
             .trim_end_matches('/')
             .to_owned();
         let bind_addr = parsed_or("BIND_ADDR", "0.0.0.0:8080")?;
+        let public_origin = origin_of(&public_url)?;
         let redirect_uri = format!("{public_url}/api/auth/github/callback");
 
         let config = Self {
             server: ServerConfig {
                 bind_addr,
                 public_url,
+                public_origin,
                 static_dir: optional("STATIC_DIR")
                     .unwrap_or_else(|| "../frontend/out".to_owned())
                     .into(),
@@ -192,6 +196,21 @@ impl AppConfig {
 
         Ok(())
     }
+}
+
+fn origin_of(public_url: &str) -> Result<String, ConfigError> {
+    let url = Url::parse(public_url)
+        .map_err(|e| ConfigError::invalid("PUBLIC_URL", format!("not a valid URL: {e}")))?;
+
+    let origin = url.origin();
+    if !origin.is_tuple() {
+        return Err(ConfigError::invalid(
+            "PUBLIC_URL",
+            format!("{public_url} has no comparable origin; use an http(s) URL"),
+        ));
+    }
+
+    Ok(origin.ascii_serialization())
 }
 
 fn load_private_key() -> Result<SecretString, ConfigError> {

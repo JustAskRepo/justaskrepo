@@ -29,7 +29,7 @@ If the project is on older versions, say so and adapt — do not silently emit v
 
 ## Project Structure
 
-```
+```text
 app/
   layout.tsx              # root layout, fonts, providers
   page.tsx
@@ -370,7 +370,7 @@ Content is detected automatically and respects `.gitignore` — no `content` arr
 ```
 
 | v3 (wrong in v4) | v4 |
-|---|---|
+| --- | --- |
 | `tailwind.config.js` | `@theme` in CSS |
 | `bg-gradient-to-r` | `bg-linear-to-r` |
 | `bg-opacity-50` | `bg-black/50` |
@@ -565,7 +565,7 @@ test("submits the contact form", async () => {
 ## Anti-Patterns to Avoid
 
 | Anti-Pattern | Better Approach |
-|---|---|
+| --- | --- |
 | `"use client"` at the top of a page | Push it to the interactive leaf |
 | Sequential `await` on independent data | `Promise.all()` |
 | `useEffect` to fetch on mount | Fetch in a Server Component |

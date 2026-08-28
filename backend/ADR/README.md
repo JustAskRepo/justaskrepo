@@ -11,7 +11,7 @@ ADRs follow the [Michael Nygard format](https://cognitect.com/blog/2011/11/15/do
 ## Log
 
 | ADR | Title | Status | Date |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | [ADR-001](ADR-001-modular-monolith.md) | Modular Monolith over Microservices | Accepted | 2026-06-13 |
 | [ADR-002](ADR-002-cqrs-module-api.md) | CQRS-Style Module API | Accepted | 2026-06-13 |
 | [ADR-003](ADR-003-full-layers-every-module.md) | Full Layered Structure for Every Module | Accepted | 2026-06-13 |

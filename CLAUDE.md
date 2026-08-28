@@ -42,7 +42,7 @@ use crate::modules::indexing::api::{GetIndexStatusQuery, handle_get_index_status
 
 ### 2. Module Structure
 Every module MUST have all four layers. Never skip a layer even if it's currently empty:
-```
+```text
 modules/<name>/
 ├── mod.rs          # re-exports from api.rs only
 ├── api.rs          # pub Commands, Queries, handler functions
@@ -113,7 +113,7 @@ Any change to a module's `api.rs` that modifies public types or removes/renames 
 ## What Belongs Where
 
 | Thing | Where it goes |
-|---|---|
+| --- | --- |
 | New ID type (e.g., `ChunkId`) | `shared_kernel/types.rs` |
 | New error variant | `shared_kernel/error.rs` |
 | Business rule / invariant | `modules/<name>/domain/` |
