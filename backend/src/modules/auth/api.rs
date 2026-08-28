@@ -7,9 +7,13 @@
 use secrecy::SecretString;
 
 use crate::modules::auth::application::commands::{complete_github_login, start_github_login};
+use crate::modules::auth::application::queries::get_session;
 use crate::{
     infrastructure::AppContext,
-    shared_kernel::{error::AppError, types::SessionId},
+    shared_kernel::{
+        error::AppError,
+        types::{GitHubId, SessionId, UserId},
+    },
 };
 
 // ─── Commands ────────────────────────────────────────────────────────────────
@@ -64,21 +68,22 @@ pub async fn handle_complete_github_login(
 }
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
-// Read-only intent to <describe read operation>. No side effects.
-// #[derive(Debug)]
-// pub struct GetExampleQuery {
-//     // pub field: Type,
-// }
+// handle_get_session──────────────────────────────────────────────────────────
+#[derive(Debug)]
+pub struct GetSessionQuery {
+    pub session_id: SessionId,
+}
 
-// #[derive(Debug)]
-// pub struct ExampleResponse {
-//     // pub field: Type,
-// }
+#[derive(Debug)]
+pub struct SessionResponse {
+    pub user_id: UserId,
+    pub github_id: GitHubId,
+}
 
-// #[tracing::instrument(skip(ctx))]
-// pub async fn handle_get_example(
-//     query: GetExampleQuery,
-//     ctx: &AppContext,
-// ) -> Result<ExampleResponse, AppError> {
-//     todo!("Delegate to application/queries/get_example.rs")
-// }
+#[tracing::instrument(skip(ctx))]
+pub async fn handle_get_session(
+    query: GetSessionQuery,
+    ctx: &AppContext,
+) -> Result<SessionResponse, AppError> {
+    get_session::run(query, ctx.auth.clone(), ctx.valkey.clone()).await
+}

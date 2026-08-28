@@ -10,13 +10,18 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::Deserialize;
 
+use axum::Json;
+
 use crate::{
-    infrastructure::{AppContext, context::AuthContext},
+    infrastructure::{AppContext, context::AuthContext, http::middleware::CurrentUser},
     modules::auth::{
         CompleteGithubLoginCommand, StartGithubLoginCommand, handle_complete_github_login,
         handle_start_github_login,
     },
-    shared_kernel::{error::AppError, types::SessionId},
+    shared_kernel::{
+        error::AppError,
+        types::{GitHubId, SessionId, UserId},
+    },
 };
 
 /// Attacker-controlled and unbounded; capped before it reaches Valkey.
@@ -31,6 +36,19 @@ pub fn routes() -> Router<AppContext> {
 async fn github_auth(State(ctx): State<AppContext>) -> Result<Redirect, AppError> {
     let res = handle_start_github_login(StartGithubLoginCommand, &ctx).await?;
     Ok(Redirect::temporary(&res.authorize_url))
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct MeResponse {
+    user_id: UserId,
+    github_id: GitHubId,
+}
+
+pub async fn me(user: CurrentUser) -> Json<MeResponse> {
+    Json(MeResponse {
+        user_id: user.user_id,
+        github_id: user.github_id,
+    })
 }
 
 #[derive(Debug, Deserialize)]

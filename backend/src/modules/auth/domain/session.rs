@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{ops::Not, time::Duration};
 
 use chrono::{DateTime, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
@@ -49,5 +49,19 @@ impl Session {
     /// to check it explicitly.
     pub(in crate::modules::auth) fn is_expired(&self, now: DateTime<Utc>) -> bool {
         now >= self.expires_at
+    }
+
+    pub(in crate::modules::auth) fn needs_refresh(
+        &self,
+        now: DateTime<Utc>,
+        threshold: Duration,
+    ) -> bool {
+        TimeDelta::from_std(threshold)
+            .is_ok_and(|threshold| now - self.last_seen_at < threshold)
+            .not()
+    }
+
+    pub(in crate::modules::auth) fn touch(&mut self, now: DateTime<Utc>) {
+        self.last_seen_at = now;
     }
 }

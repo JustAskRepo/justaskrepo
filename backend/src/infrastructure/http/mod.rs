@@ -10,7 +10,7 @@ pub mod error;
 pub mod middleware;
 pub mod routes;
 
-use axum::Router;
+use axum::{Router, middleware::from_fn_with_state, routing::get};
 
 use super::AppContext;
 
@@ -27,17 +27,15 @@ pub fn router(ctx: AppContext) -> Router {
 
     // Authenticated — every route below the session layer.
     //
-    // TODO(auth): the moment the auth module lands, this becomes:
-    //
-    //   let protected = Router::new()
-    //       .route("/me", get(routes::auth::me))
-    //       .route("/repositories", get(routes::repositories::list))
-    //       .route_layer(from_fn_with_state(ctx.clone(), middleware::require_session));
-    //
     // `route_layer`, not `layer`: it runs only on routes that actually matched,
     // so an unknown path 404s instead of 401ing.
+    let protected = Router::new()
+        .route("/me", get(routes::auth::me))
+        .route_layer(from_fn_with_state(ctx.clone(), middleware::require_session));
 
-    Router::new().nest("/api", public).with_state(ctx)
+    Router::new()
+        .nest("/api", public.merge(protected))
+        .with_state(ctx)
     // TODO(static): .fallback_service(ServeDir::new(&config.server.static_dir))
     //   to serve the Next.js export at `/`. Needs tower-http; in dev the Next
     //   dev server serves the UI instead, which is why compose points
