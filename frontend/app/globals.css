@@ -17,6 +17,13 @@
   --color-accent: #8b5cf6; /* violet */
   --color-accent-2: #22d3ee; /* cyan  */
   --color-accent-3: #34d399; /* emerald */
+
+  /* Semantic status palette — contrast-checked (>=4.5:1) on --color-bg and on
+     the glass card surface. Always paired with a label, never colour alone. */
+  --color-ok: #34d399; /* indexed   */
+  --color-warn: #fbbf24; /* stale     */
+  --color-danger: #fb7185; /* failed    */
+  --color-pending: #a78bfa; /* queued    */
 }
 
 /* ------------------------------------------------------------------ */
@@ -90,6 +97,21 @@ body {
 }
 @keyframes shimmer {
   to { transform: translateX(200%); }
+}
+@keyframes skeleton-sweep {
+  to { transform: translateX(200%); }
+}
+@keyframes indeterminate {
+  0% { transform: translateX(-100%) scaleX(0.45); }
+  55% { transform: translateX(60%) scaleX(0.85); }
+  100% { transform: translateX(240%) scaleX(0.45); }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sheen-sweep {
+  to { background-position: 200% center; }
 }
 
 .animate-float { animation: float 9s ease-in-out infinite; }
@@ -214,6 +236,59 @@ body {
      hover reveal isn't overridden by this (unlayered) rule. */
 }
 
+/* Skeleton placeholder with a travelling sheen */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.09), transparent);
+  animation: skeleton-sweep 1.7s ease-in-out infinite;
+}
+
+/* Indeterminate progress bar — used while a repo is actively indexing, where
+   the dashboard list knows the state but not a percentage. */
+.progress-track {
+  position: relative;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.progress-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  transform-origin: left center;
+  background: linear-gradient(90deg, transparent, var(--color-accent-2), var(--color-accent));
+  animation: indeterminate 1.6s cubic-bezier(0.55, 0, 0.35, 1) infinite;
+}
+
+/* Entrance for items that mount after data lands */
+.pop {
+  animation: pop-in 0.45s cubic-bezier(0.22, 0.7, 0.16, 1) both;
+}
+
+/* Sweeping highlight for the stats strip heading */
+.text-sheen {
+  background: linear-gradient(
+    100deg,
+    var(--color-ink) 20%,
+    var(--color-accent-2) 45%,
+    var(--color-ink) 70%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: sheen-sweep 6s linear infinite;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Reduced motion                                                     */
 /* ------------------------------------------------------------------ */
@@ -227,8 +302,17 @@ body {
     scroll-behavior: auto !important;
   }
   .rise,
-  .reveal {
+  .reveal,
+  .pop {
     opacity: 1 !important;
     transform: none !important;
+  }
+  .skeleton::after,
+  .progress-track::after {
+    animation: none;
+  }
+  .progress-track::after {
+    transform: none;
+    opacity: 0.5;
   }
 }

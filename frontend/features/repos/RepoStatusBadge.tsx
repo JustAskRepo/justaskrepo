@@ -1,19 +1,25 @@
 import type { IndexStatus } from "@/types/api";
+import { STATUS_STYLE } from "@/features/repos/status";
 
-const LABELS: Record<IndexStatus, string> = {
-  never_indexed: "Never indexed",
-  queued: "Queued",
-  indexing: "Indexing…",
-  indexed: "Indexed",
-  failed: "Failed",
-  stale: "Stale",
-};
-
-/** Small status pill for a repository's current index state. */
+/**
+ * Status pill for a repository's index state — a coloured marker plus the
+ * label, so the state reads without relying on colour perception. Active
+ * states (queued / indexing) get a live pulse.
+ */
 export default function RepoStatusBadge({ status }: { status: IndexStatus }) {
+  const style = STATUS_STYLE[status];
+
   return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-muted">
-      {LABELS[status]}
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${style.shell} ${style.text}`}
+    >
+      <span className="relative flex h-1.5 w-1.5">
+        {style.active && (
+          <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-70 ${style.dot}`} />
+        )}
+        <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${style.dot}`} />
+      </span>
+      {style.label}
     </span>
   );
 }

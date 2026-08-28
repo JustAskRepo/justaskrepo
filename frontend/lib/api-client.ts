@@ -19,15 +19,57 @@ import type {
 /** Axum API prefix, same origin as the static assets. */
 const API_BASE = "/api";
 
+/**
+ * A non-2xx response from Axum. Carries the status so callers can tell an
+ * expired session (401) from a backend that is down or not yet serving the
+ * route — the dashboard renders a different screen for each.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly path: string,
+  ) {
+    super(`API ${path} failed: ${status}`);
+    this.name = "ApiError";
+  }
+
+  /** No/expired session cookie — the visitor needs to sign in again. */
+  get isUnauthorized(): boolean {
+    return this.status === 401 || this.status === 403;
+  }
+}
+
+/**
+ * The request never got a response at all — offline, DNS failure, connection
+ * refused, CORS. Distinct from `ApiError`, which means the server answered and
+ * said no.
+ */
+export class NetworkError extends Error {
+  constructor(
+    readonly path: string,
+    options?: { cause?: unknown },
+  ) {
+    super(`Network request to ${path} failed`, options);
+    this.name = "NetworkError";
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    // Send the Axum session cookie on every call (explicit; same-origin anyway).
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      // Send the Axum session cookie on every call (explicit; same-origin anyway).
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch (cause) {
+    // fetch only rejects when the request never completed — a real "offline",
+    // not a 4xx/5xx. Naming it here keeps that distinction all the way to the UI.
+    throw new NetworkError(path, { cause });
+  }
   if (!res.ok) {
-    throw new Error(`API ${path} failed: ${res.status}`);
+    throw new ApiError(res.status, path);
   }
   return res.json() as Promise<T>;
 }
@@ -78,4 +120,18 @@ export function chatSocketUrl(ticket: string): string {
  */
 export function githubLoginUrl(): string {
   return `${API_BASE}/auth/github`;
+}
+
+/**
+ * URL that starts GitHub App installation. Navigate the browser here (a full
+ * navigation, not fetch) — Axum redirects on to GitHub's installation screen
+ * and handles the return trip.
+ *
+ * The install target is a GitHub URL built from the App's slug, which is
+ * backend config (see `INSTALL_URL`, ARCHITECTURE.md §5.1). A static export has
+ * no env vars, so the frontend must not try to construct it: it asks Axum,
+ * exactly as sign-in does.
+ */
+export function githubAppInstallUrl(): string {
+  return `${API_BASE}/installations/new`;
 }
