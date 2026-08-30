@@ -228,7 +228,7 @@ let dest = if install.has_any { "/dashboard/" } else { INSTALL_URL };
 
 ### 5.2 Middleware
 
-`require_session` is the only middleware today. It does two things before a protected route runs — reject cross-origin writes, then turn the session cookie into a `CurrentUser` request extension — and it lives in `infrastructure/http/middleware/` for the same reason routes do: both are HTTP concerns, and the module they lean on must not learn what axum is. It calls `auth::api::handle_get_session` like any other caller.
+There are two middleware layers today, `require_session` (below) and `rate_limit` (§5.3). `require_session` does two things before a protected route runs — reject cross-origin writes, then turn the session cookie into a `CurrentUser` request extension — and it lives in `infrastructure/http/middleware/` for the same reason routes do: both are HTTP concerns, and the module they lean on must not learn what axum is. It calls `auth::api::handle_get_session` like any other caller.
 
 **Origin verification on mutating methods.** `SameSite=Lax` withholds the session cookie from cross-site sub-resource requests, but still sends it on a top-level cross-site *navigation* — which is always a GET. The unsafe methods are the remaining gap, and the `Origin` header closes it: a browser sets that header itself on every unsafe request and page script cannot forge it, so an origin that is ours is proof the request came from our own page.
 
@@ -245,6 +245,29 @@ On `POST`/`PUT`/`PATCH`/`DELETE` the header must be present and equal to the ori
 - `POST /api/webhooks/github` is public, cross-origin by nature, carries no cookie, and is HMAC-verified. An `Origin` check on it would only break it.
 
 The expected origin is **derived** from `PUBLIC_URL` in `config.rs`, never configured on its own. A second variable holding the same fact is a second thing to get out of sync, and out of sync here fails silently in both directions — locking out the real UI, or admitting a stranger.
+
+### 5.3 Rate Limiting
+
+A budget is not an HTTP concern; turning a refusal into a `429` is. So the limiter is split the same way §5.2 splits everything else:
+
+- `infrastructure/rate_limiter.rs` — a fixed-window counter in Valkey, beside `db.rs` and `valkey.rs`. `INCR`, `EXPIRE … NX`, `TTL`, pipelined in one `MULTI`.
+- `infrastructure/http/middleware/rate_limit.rs` — resolves the caller, spends one unit, returns `AppError::RateLimited`. It knows no status codes; `http/error.rs` maps that variant to `429` and attaches `Retry-After`.
+
+It is deliberately **not** a module. A module owns data and enforces rules about it; a counter is neither, nothing queries it, and putting it inside `auth` would strand it there when chat and indexing want the same thing (ADR-007).
+
+```rust
+// infrastructure/http/mod.rs — one line per limited route group
+let auth = routes::auth::routes().route_layer(from_fn_with_state(
+    middleware::RateLimitState::new(ctx.clone(), ctx.rate_limits.auth),
+    middleware::rate_limit,
+));
+```
+
+The policy travels *inside* the layer's state rather than being read from `AppContext` at request time, which is what lets the same middleware be mounted more than once with a different budget each time. Adding a budget is a field on `RateLimits` and a `route_layer` line — no second middleware.
+
+**It fails open.** `rate_limiter::check` returns a `RateLimitDecision`, never a `Result`: it is structurally incapable of denying service because of its own failure. A limiter that takes the app down with Valkey has become the outage it exists to prevent, and the exposure is nil regardless — sessions live in Valkey too, so a Valkey outage already means nobody can log in.
+
+**The subject is a trusted-proxy-aware address** (`infrastructure/http/client_ip.rs`). `X-Forwarded-For` is client-writable, so keying on it naively is not a weak limiter but no limiter at all — the caller rotates the header and never spends a budget. `TRUSTED_PROXY_HOPS` says how many proxies really sit in front, and the resolver steps that many entries back from the socket peer; anything further left is an unverifiable claim. It defaults to `0` (ignore the header) because over-trusting is the only genuinely unsafe direction. The login callback records the same value as its audit `ip`.
 
 ---
 
@@ -326,7 +349,7 @@ Every module returns `AppError`, but only the HTTP layer knows what an HTTP stat
 
 ```rust
 // shared_kernel/error.rs — framework-free, thiserror
-pub enum AppError { NotFound { .. }, Unauthorized, Forbidden, Validation(..), Conflict(..), Internal(..) }
+pub enum AppError { NotFound { .. }, Unauthorized, Forbidden, Validation(..), Conflict(..), RateLimited { .. }, Unavailable { .. }, Internal(..) }
 
 // infrastructure/http/error.rs — the ONE place that maps errors to HTTP
 impl IntoResponse for AppError { .. }
@@ -388,6 +411,7 @@ Run with `cargo test --test architecture`. Fails CI if violated. These are **sou
 | [ADR-004](ADR/ADR-004-event-bus-integration.md) | In-Memory Event Bus as Default Integration Style | Accepted |
 | [ADR-005](ADR/ADR-005-architecture-enforcement.md) | Three-Layer Architecture Enforcement Strategy | Accepted |
 | [ADR-006](ADR/ADR-006-shared-kernel-scope.md) | Shared Kernel Scope Restrictions | Accepted |
+| [ADR-007](ADR/ADR-007-rate-limiting.md) | Rate Limiting as an HTTP Layer over a Valkey Counter | Accepted |
 
 ---
 

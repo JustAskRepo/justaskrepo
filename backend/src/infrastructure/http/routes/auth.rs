@@ -13,7 +13,11 @@ use serde::Deserialize;
 use axum::Json;
 
 use crate::{
-    infrastructure::{AppContext, context::AuthContext, http::middleware::CurrentUser},
+    infrastructure::{
+        AppContext,
+        context::AuthContext,
+        http::{client_ip::client_ip, middleware::CurrentUser},
+    },
     modules::auth::{
         CompleteGithubLoginCommand, GetUserProfileQuery, RevokeAllSessionsCommand,
         RevokeSessionCommand, StartGithubLoginCommand, handle_complete_github_login,
@@ -152,7 +156,7 @@ async fn github_auth_callback(
         CompleteGithubLoginCommand {
             code: code.into(),
             state: state.into(),
-            ip: client_ip(&headers, peer),
+            ip: client_ip(&headers, peer, ctx.trusted_proxy_hops).to_string(),
             user_agent: user_agent(&headers),
         },
         &ctx,
@@ -194,21 +198,6 @@ fn removal_cookie(auth: &AuthContext) -> Cookie<'static> {
         .path("/")
         .max_age(time::Duration::ZERO)
         .build()
-}
-
-/// Prefers `X-Forwarded-For` because the dev setup proxies `/api/*` through the
-/// Next dev server, where the peer address is always the proxy. The header is
-/// client-spoofable, which is acceptable only because the value is recorded for
-/// audit and never trusted for an authorization decision. If a route ever needs
-/// a trustworthy IP, this must become a trusted-proxy-aware parse first.
-fn client_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
-    headers
-        .get("x-forwarded-for")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map_or_else(|| peer.ip().to_string(), str::to_owned)
 }
 
 fn user_agent(headers: &HeaderMap) -> String {

@@ -403,7 +403,7 @@ The single GitHub App issues two token types; both stay on the backend.
 | Bulk revocation | Per-user session index (`user_sessions:<user_id>`) |
 | Session ID guessing | Cryptographically secure random IDs (`rand`, ≥128 bits) |
 | WebSocket auth | Single-use, short-TTL ticket; never the session ID |
-| Brute force / abuse | Valkey rate limiting on the auth routes and APIs |
+| Brute force / abuse | Valkey fixed-window rate limit on the login handshake, keyed on a trusted-proxy-aware client address (ADR-007) |
 | Token leakage | GitHub tokens not stored; encrypted only if ever persisted |
 | Secrets in logs | Secrets wrapped in `SecretString` — `Debug` prints `[REDACTED]` |
 | Transport | HTTPS required in production |
@@ -429,12 +429,42 @@ and the API at `/api/*`; the dev proxy reproduces this). Consequences:
 > future change reintroduces a separate frontend origin, this entire section — and
 > the cookie attributes above — must be revisited **before** the change ships.
 
+### Rate Limiting
+
+Both halves of the login handshake sit behind one Valkey fixed-window budget:
+**20 requests per 60 seconds per client address**, shared, tunable via
+`AUTH_RATE_LIMIT_MAX_REQUESTS` / `AUTH_RATE_LIMIT_WINDOW_SECS`. A real login costs two
+requests, so that is ten logins a minute from one address. Over budget is `429` with a
+`Retry-After` naming the seconds left in the window.
+
+Both routes are cheap to abuse and need no session: `/api/auth/github` mints a
+10-minute Valkey `state` key per hit, and the callback spends two GitHub calls on every
+hit that carries a valid one.
+
+**The subject is not whatever `X-Forwarded-For` says.** That header is client-writable,
+so keying on it as sent is no limit at all — the caller rotates it and never spends a
+budget. `TRUSTED_PROXY_HOPS` (default `0`) states how many proxies actually sit in
+front, and the resolver counts that many entries back from the socket peer; everything
+further left is an unverifiable claim. **Set it when you deploy behind a proxy** — at
+`0` behind nginx, every user shares the proxy's bucket. The login callback records the
+same resolved address as its audit `ip`, so a wrong setting is visible: every session
+row shows one address.
+
+Two known limits, both deliberate (ADR-007): callers behind one NAT share a bucket, and
+a `429` on `/api/auth/github` renders as raw JSON because that route is a browser
+navigation rather than a `fetch`.
+
 ### Availability
 
 Valkey is on the critical path for every authenticated request. Run it with **AOF
 persistence** so sessions survive a restart, and treat a Valkey outage as
 **fail-closed** — the backend returns `401` rather than serving unauthenticated
 requests.
+
+The rate limiter is the one deliberate exception: it **fails open**, because a control
+that takes the app down with Valkey has become the outage it exists to prevent. It
+gives nothing away — with Valkey down there are no sessions and no `state` keys, so
+there is nothing left to brute-force.
 
 ---
 
@@ -465,7 +495,7 @@ in behind the same session model without touching cookies, middleware, or logout
 
 ## Open Items
 
-Tracked here so they don't get lost between this document and ADR-007.
+Tracked here so they don't get lost between this document and ADR-008.
 
 - [x] Confirm `__Host-` cookies are accepted on `http://localhost` — verified
       2026-08-23 in Chrome, Firefox, and Brave

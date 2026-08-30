@@ -46,6 +46,7 @@ pub struct AppConfig {
     pub gemini: GeminiConfig,
     pub github: GitHubAppConfig,
     pub session: SessionConfig,
+    pub rate_limit: RateLimitConfig,
 }
 
 #[derive(Debug)]
@@ -54,6 +55,7 @@ pub struct ServerConfig {
     pub public_url: String,
     pub public_origin: String,
     pub static_dir: PathBuf,
+    pub trusted_proxy_hops: u8,
 }
 
 #[derive(Debug)]
@@ -95,6 +97,12 @@ pub struct GitHubAppConfig {
 }
 
 #[derive(Debug)]
+pub struct RateLimitConfig {
+    pub auth_max_requests: u32,
+    pub auth_window: Duration,
+}
+
+#[derive(Debug)]
 pub struct SessionConfig {
     pub cookie_name: String,
     pub absolute_ttl: Duration,
@@ -120,6 +128,7 @@ impl AppConfig {
                 static_dir: optional("STATIC_DIR")
                     .unwrap_or_else(|| "../frontend/out".to_owned())
                     .into(),
+                trusted_proxy_hops: parsed_or("TRUSTED_PROXY_HOPS", "0")?,
             },
             database: DatabaseConfig {
                 url: secret("DATABASE_URL")?,
@@ -158,6 +167,10 @@ impl AppConfig {
                 idle_ttl: days_or("SESSION_IDLE_TTL_DAYS", "7")?,
                 refresh_threshold: seconds_or("SESSION_REFRESH_THRESHOLD_SECS", "300")?,
             },
+            rate_limit: RateLimitConfig {
+                auth_max_requests: parsed_or("AUTH_RATE_LIMIT_MAX_REQUESTS", "20")?,
+                auth_window: seconds_or("AUTH_RATE_LIMIT_WINDOW_SECS", "60")?,
+            },
         };
 
         config.validate()?;
@@ -177,6 +190,23 @@ impl AppConfig {
             return Err(ConfigError::Inconsistent(
                 "SESSION_REFRESH_THRESHOLD_SECS is not shorter than the idle TTL; \
                  sessions would expire before they are ever refreshed"
+                    .to_owned(),
+            ));
+        }
+
+        if self.rate_limit.auth_max_requests == 0 {
+            return Err(ConfigError::Inconsistent(
+                "AUTH_RATE_LIMIT_MAX_REQUESTS is 0, which refuses every login. To \
+                 effectively disable the limit, set a large number — 0 is a typo, \
+                 not a switch."
+                    .to_owned(),
+            ));
+        }
+
+        if self.rate_limit.auth_window.is_zero() {
+            return Err(ConfigError::Inconsistent(
+                "AUTH_RATE_LIMIT_WINDOW_SECS is 0; a window with no duration never \
+                 refills the budget"
                     .to_owned(),
             ));
         }

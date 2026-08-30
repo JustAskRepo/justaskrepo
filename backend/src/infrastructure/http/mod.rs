@@ -6,6 +6,7 @@
 // Delete this directory and every module still compiles. That is the test for
 // whether something belongs in it.
 
+pub mod client_ip;
 pub mod error;
 pub mod middleware;
 pub mod routes;
@@ -20,10 +21,13 @@ use super::AppContext;
 /// the Next.js static export, and the dev proxy only forwards `/api/*` to Axum.
 /// A route registered outside `/api` is unreachable in development.
 pub fn router(ctx: AppContext) -> Router {
+    let auth = routes::auth::routes().route_layer(from_fn_with_state(
+        middleware::RateLimitState::new(ctx.clone(), ctx.rate_limits.auth),
+        middleware::rate_limit,
+    ));
+
     // Public — no session required.
-    let public = Router::new()
-        .merge(routes::health::routes())
-        .merge(routes::auth::routes());
+    let public = Router::new().merge(routes::health::routes()).merge(auth);
 
     // Authenticated — every route below the session layer.
     //

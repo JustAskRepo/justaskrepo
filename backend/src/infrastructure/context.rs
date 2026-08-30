@@ -16,7 +16,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::config::AppConfig;
+use super::{
+    config::{AppConfig, RateLimitConfig},
+    rate_limiter::RateLimitPolicy,
+};
 use secrecy::SecretString;
 use sqlx::PgPool;
 
@@ -31,10 +34,17 @@ pub struct AuthContext {
     pub redirect_uri: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RateLimits {
+    pub auth: RateLimitPolicy,
+}
+
 #[derive(Clone)]
 pub struct AppContext {
     pub auth: Arc<AuthContext>,
     pub public_origin: Arc<str>,
+    pub rate_limits: RateLimits,
+    pub trusted_proxy_hops: u8,
     pub db: PgPool,
     pub valkey: deadpool_redis::Pool,
     pub http: reqwest::Client,
@@ -55,6 +65,8 @@ impl AppContext {
         Ok(Self {
             auth,
             public_origin: Arc::from(config.server.public_origin.as_str()),
+            rate_limits: RateLimits::from(&config.rate_limit),
+            trusted_proxy_hops: config.server.trusted_proxy_hops,
             db,
             valkey,
             http,
@@ -62,6 +74,18 @@ impl AppContext {
         })
     }
 }
+impl From<&RateLimitConfig> for RateLimits {
+    fn from(config: &RateLimitConfig) -> Self {
+        Self {
+            auth: RateLimitPolicy {
+                name: "auth",
+                max_requests: config.auth_max_requests,
+                window: config.auth_window,
+            },
+        }
+    }
+}
+
 impl From<&AppConfig> for AuthContext {
     fn from(config: &AppConfig) -> Self {
         Self {

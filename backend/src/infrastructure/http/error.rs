@@ -5,7 +5,7 @@
 
 use axum::{
     Json,
-    http::StatusCode,
+    http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde::Serialize;
@@ -28,6 +28,7 @@ impl IntoResponse for AppError {
             AppError::Forbidden => StatusCode::FORBIDDEN,
             AppError::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::Conflict(_) => StatusCode::CONFLICT,
+            AppError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             AppError::Unavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -43,13 +44,26 @@ impl IntoResponse for AppError {
             other => other.to_string(),
         };
 
-        (
+        let retry_after = match &self {
+            AppError::RateLimited { retry_after_secs } => Some(*retry_after_secs),
+            _ => None,
+        };
+
+        let mut response = (
             status,
             Json(ErrorBody {
                 code: self.code(),
                 message,
             }),
         )
-            .into_response()
+            .into_response();
+
+        if let Some(seconds) = retry_after {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, HeaderValue::from(seconds));
+        }
+
+        response
     }
 }

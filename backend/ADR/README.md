@@ -18,6 +18,7 @@ ADRs follow the [Michael Nygard format](https://cognitect.com/blog/2011/11/15/do
 | [ADR-004](ADR-004-event-bus-integration.md) | In-Memory Event Bus as Default Integration | Accepted | 2026-06-13 |
 | [ADR-005](ADR-005-architecture-enforcement.md) | Three-Layer Enforcement Strategy | Accepted | 2026-06-13 |
 | [ADR-006](ADR-006-shared-kernel-scope.md) | Shared Kernel Scope Restrictions | Accepted | 2026-06-13 |
+| [ADR-007](ADR-007-rate-limiting.md) | Rate Limiting as an HTTP Layer over a Valkey Counter | Accepted | 2026-08-29 |
 
 ## How to Add an ADR
 
@@ -32,8 +33,8 @@ ADRs follow the [Michael Nygard format](https://cognitect.com/blog/2011/11/15/do
 ```markdown
 # ADR-00N: <Title>
 
-**Date:** YYYY-MM-DD  
-**Status:** Proposed | Accepted | Deprecated | Superseded by ADR-00X  
+**Date:** YYYY-MM-DD
+**Status:** Proposed | Accepted | Deprecated | Superseded by ADR-00X
 **Deciders:** <names>
 
 ---

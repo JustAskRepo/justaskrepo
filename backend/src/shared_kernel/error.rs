@@ -32,6 +32,9 @@ pub enum AppError {
     #[error("conflict: {0}")]
     Conflict(String),
 
+    #[error("rate limit exceeded")]
+    RateLimited { retry_after_secs: u64 },
+
     /// A dependency is down. The caller may retry.
     #[error("{service} unavailable")]
     Unavailable { service: &'static str },
@@ -55,6 +58,7 @@ impl AppError {
             Self::Forbidden => "forbidden",
             Self::Validation(_) => "validation_failed",
             Self::Conflict(_) => "conflict",
+            Self::RateLimited { .. } => "rate_limited",
             Self::Unavailable { .. } => "unavailable",
             Self::Internal(_) => "internal_error",
         }
