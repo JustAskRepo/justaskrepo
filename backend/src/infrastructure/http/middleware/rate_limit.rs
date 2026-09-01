@@ -16,7 +16,7 @@ use axum::{
 use crate::{
     infrastructure::{
         AppContext,
-        http::client_ip::client_ip,
+        http::client_ip::{client_ip, rate_limit_subject},
         rate_limiter::{self, RateLimitDecision, RateLimitPolicy},
     },
     shared_kernel::error::AppError,
@@ -50,9 +50,10 @@ pub async fn rate_limit(
             ))
         })?;
 
-    let subject = client_ip(request.headers(), peer, state.ctx.trusted_proxy_hops);
+    let client = client_ip(request.headers(), peer, state.ctx.trusted_proxy_hops);
+    let subject = rate_limit_subject(client);
 
-    match rate_limiter::check(&state.policy, &subject.to_string(), &state.ctx.valkey).await {
+    match rate_limiter::check(&state.policy, &subject, &state.ctx.valkey).await {
         RateLimitDecision::Allowed => Ok(next.run(request).await),
         RateLimitDecision::Exceeded { retry_after_secs } => {
             tracing::warn!(

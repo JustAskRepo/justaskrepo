@@ -14,7 +14,7 @@
 // wrong in that direction costs accuracy, and guessing wrong in the other
 // direction hands out an unlimited budget.
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 
 use axum::http::HeaderMap;
 
@@ -58,6 +58,20 @@ fn parse_ip(entry: &str) -> Option<IpAddr> {
         .strip_prefix('[')
         .and_then(|rest| rest.split(']').next())
         .and_then(|inner| inner.parse().ok())
+}
+
+pub fn rate_limit_subject(ip: IpAddr) -> String {
+    match ip {
+        IpAddr::V4(v4) => v4.to_string(),
+
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => v4.to_string(),
+            None => {
+                let [a, b, c, d, ..] = v6.segments();
+                format!("{}/64", Ipv6Addr::new(a, b, c, d, 0, 0, 0, 0))
+            }
+        },
+    }
 }
 
 #[cfg(test)]
@@ -155,5 +169,47 @@ mod tests {
     fn junk_entries_are_dropped_not_counted() {
         let noisy = headers(&["_hidden, 198.51.100.7"]);
         assert_eq!(client_ip(&noisy, peer(), 1), ip("198.51.100.7"));
+    }
+
+    #[test]
+    fn an_ipv4_subject_is_the_address_itself() {
+        assert_eq!(rate_limit_subject(ip("203.0.113.9")), "203.0.113.9");
+    }
+
+    /// The point of the whole function: a /64 is one allocation, so every
+    /// address inside it spends from one budget.
+    #[test]
+    fn ipv6_addresses_in_one_slash_64_share_a_budget() {
+        let first = rate_limit_subject(ip("2001:db8:1:2::1"));
+        let second = rate_limit_subject(ip("2001:db8:1:2:ffff:ffff:ffff:ffff"));
+        assert_eq!(first, second);
+        assert_eq!(first, "2001:db8:1:2::/64");
+    }
+
+    #[test]
+    fn separate_slash_64s_are_separate_budgets() {
+        assert_ne!(
+            rate_limit_subject(ip("2001:db8:1:2::1")),
+            rate_limit_subject(ip("2001:db8:1:3::1"))
+        );
+    }
+
+    /// A dual-stack listener hands us `::ffff:a.b.c.d` for IPv4 peers. Collapsing
+    /// those by prefix would put every IPv4 caller in one bucket, so they must
+    /// unmap back to the address the limiter would otherwise have seen.
+    #[test]
+    fn ipv4_mapped_addresses_do_not_collapse_into_one_bucket() {
+        assert_eq!(rate_limit_subject(ip("::ffff:203.0.113.9")), "203.0.113.9");
+        assert_ne!(
+            rate_limit_subject(ip("::ffff:203.0.113.9")),
+            rate_limit_subject(ip("::ffff:198.51.100.7"))
+        );
+    }
+
+    /// `to_ipv4_mapped` and not `to_ipv4`: the latter also converts the
+    /// deprecated `::a.b.c.d` form, which would rewrite loopback as `0.0.0.1`.
+    #[test]
+    fn loopback_is_not_mistaken_for_a_mapped_ipv4_address() {
+        assert_eq!(rate_limit_subject(ip("::1")), "::/64");
     }
 }
