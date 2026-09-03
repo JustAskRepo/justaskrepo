@@ -12,3 +12,6 @@ pub(super) mod github_oauth_client;
 pub(super) mod oauth_state_store;
 pub(super) mod session_store;
 pub(super) mod user_repository;
+
+#[cfg(test)]
+pub(super) mod test_support;

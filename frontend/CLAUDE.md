@@ -23,7 +23,7 @@ frontend/
     repos/{RepoList,RepoStatusBadge,IndexButton}.tsx
     chat/{ChatWindow.tsx,useChatSocket.ts}
   lib/                               # client-only helpers
-    api-client.ts                    # typed fetch -> Axum /api/*, + auth/ws URLs
+    api-client.ts                    # typed fetch -> Axum /api/*, + auth URLs
     format.ts
   types/
     api.ts                           # shared DTOs mirroring the Axum API
@@ -44,8 +44,9 @@ for any of them, you've drifted from the plan — the answer lives in Axum, not 
 
 1. **Browser → Axum directly.** All data access goes through `lib/api-client.ts`, which hits
    relative `/api/*` on the same origin with `credentials: "include"`. No API base URL env var —
-   same-origin relative paths are frozen-safe and need no `NEXT_PUBLIC_*`. The chat WebSocket
-   opens to Axum via `chatSocketUrl(ticket)` using a single-use ticket from `/api/chat/ws-ticket`.
+   same-origin relative paths are frozen-safe and need no `NEXT_PUBLIC_*`. Chat streams over
+   **SSE**, not a WebSocket: the reply arrives on an `EventSource` that carries the session
+   cookie like any other same-origin request — there is no ticket (ADR-008 §7).
 2. **Auth belongs to Axum.** Sign-in is a full-page navigation to `githubLoginUrl()`
    (`/api/auth/github`). Axum runs the OAuth dance and sets an httpOnly session cookie;
    the browser sends it automatically on every `/api/*` call. The frontend never sees a token,
@@ -53,7 +54,7 @@ for any of them, you've drifted from the plan — the answer lives in Axum, not 
 3. **Where things go:**
    - Reusable, presentational, feature-agnostic UI → `components/`.
    - Feature-scoped components, hooks, and client logic → `features/<feature>/`.
-   - Browser fetch calls + auth/ws URL builders → `lib/api-client.ts` (hits `/api/*` only).
+   - Browser fetch calls + auth URL builders → `lib/api-client.ts` (hits `/api/*` only).
    - Shared wire/DTO types → `types/api.ts` (keep in sync with the Rust backend).
    - Pure formatting/util helpers → `lib/`.
 4. **Runtime-dynamic ids travel as query params, not route segments.** Export pre-renders one

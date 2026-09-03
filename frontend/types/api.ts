@@ -64,11 +64,6 @@ export interface EnqueueIndexResponse {
   deduped: boolean;
 }
 
-/** Single-use WebSocket ticket from POST /chat/ws-ticket. */
-export interface WsTicket {
-  ticket: string;
-}
-
 export type ChatRole = "user" | "assistant" | "system";
 
 export interface Citation {

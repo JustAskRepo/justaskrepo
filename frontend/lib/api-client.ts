@@ -3,7 +3,6 @@ import type {
   Me,
   RepoStatus,
   RepoSummary,
-  WsTicket,
 } from "@/types/api";
 
 /**
@@ -96,23 +95,13 @@ export function startIndexing(
   });
 }
 
-/** POST /api/chat/ws-ticket — single-use ticket to open the chat WebSocket. */
-export function getWsTicket(sessionId: string): Promise<WsTicket> {
-  return request<WsTicket>("/chat/ws-ticket", {
-    method: "POST",
-    body: JSON.stringify({ session_id: sessionId }),
-  });
-}
-
-/**
- * Absolute ws(s):// URL for the chat socket, derived from the current origin so
- * it works in dev and prod without config. The ticket authenticates the socket
- * (cookies are not reliably sent on WebSocket handshakes across contexts).
+/*
+ * Chat streaming has no helper here yet, and will not need a ticket when it does.
+ * It is SSE, not a WebSocket (decided 2026-09-03 — AUTHENTICATION.md §Streaming
+ * Authentication, ADR-008 §7): POST the question, then open an `EventSource` on
+ * the reply stream. Both are same-origin, so both carry the session cookie by
+ * themselves. The helper lands with the backend route.
  */
-export function chatSocketUrl(ticket: string): string {
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}${API_BASE}/ws/chat?ticket=${encodeURIComponent(ticket)}`;
-}
 
 /**
  * URL that kicks off GitHub OAuth on the backend. Navigate the browser here

@@ -1,8 +1,10 @@
 # Authentication Architecture — JustAskRepo
 
-> **Last Updated:** 2026-08-28
+> **Last Updated:** 2026-09-03
 > **Status:** Active — login flow, session middleware (including the `Origin` check
-> on mutating methods), `/api/me`, and both logout routes are implemented.
+> on mutating methods), `/api/me`, and both logout routes are implemented. This
+> document says *what* the system does; **ADR-008** records why each of these was
+> chosen over its alternative.
 
 ## Overview
 
@@ -119,8 +121,7 @@ outside `/api` is unreachable in development.
 | `GET  /api/repositories` | Repos visible to this user |
 | `GET  /api/repositories/{id}/status` | Index status |
 | `POST /api/repositories/{id}/index` | Enqueue indexing |
-| `POST /api/chat/ws-ticket` | Mint a single-use WebSocket ticket |
-| `GET  /api/ws/chat?ticket=…` | Chat WebSocket (ticket-authenticated) |
+| `POST /api/chat/…` | Ask a question; the reply streams back as SSE. Route shape is the `chat` module's to name — the auth is the session cookie, same as every row above |
 
 > Axum 0.8 uses `{id}` for path parameters, not `:id`, and no longer matches
 > trailing slashes implicitly. `next.config.ts` sets `skipTrailingSlashRedirect`
@@ -339,38 +340,50 @@ the UI calls **`GET /api/me`**, which returns the authenticated profile or `401`
 
 ---
 
-## WebSocket Authentication
+## Streaming Authentication (SSE)
 
-Cookies are not reliably attached to WebSocket handshakes across all contexts, and
-the handshake cannot be rejected with a useful body. Chat therefore uses a
-**single-use ticket**:
+> **Decided 2026-09-03: chat streams over SSE, not WebSocket, and there is no ticket.**
+
+An SSE stream is an ordinary `GET`. Same-origin means the browser attaches the session
+cookie by itself, `require_session` runs on it exactly as it runs on `/api/me`, and a
+rejection is a plain `401` with a body the client can read.
 
 ```text
-POST /api/chat/ws-ticket      ← normal cookie-authenticated request
-      │
-      ├─ Auth middleware resolves the session from the cookie
-      ├─ Mint a random ticket, store ws_ticket:<ticket> → user_id in Valkey (TTL ≤ 30s)
+POST /api/chat/…          ← the question: a normal cookie-authenticated request
+      │                      (an unsafe method, so the Origin check covers it)
       ▼
-{ "ticket": "…" }
+GET  /api/chat/…/stream   ← the answer: EventSource, cookie sent automatically
       │
+      ├─ require_session resolves the session from the cookie
+      ├─ 401 (with a readable body) if it is missing or expired
       ▼
-GET /api/ws/chat?ticket=…
-      │
-      ├─ Look up and DELETE the ticket (single use)
-      ├─ Reject with 401 if missing or expired
-      ▼
-Socket upgraded, bound to that user
+text/event-stream, bound to that user
 ```
 
-**The ticket endpoint takes no request body.** The session comes from the cookie via
-the normal middleware — the browser cannot read an `HttpOnly` cookie, so a client
-that passes a session ID as an argument is by definition passing something it should
-not have. The current frontend scaffold (`frontend/lib/api-client.ts`,
-`getWsTicket(sessionId)`) contradicts this and must be corrected when the endpoint is
-implemented.
+This replaces the single-use `ws_ticket:<ticket>` key earlier revisions specified. That
+ticket existed for exactly one reason — a WebSocket handshake does not reliably carry
+cookies and cannot be refused with a useful body — and SSE has neither problem, so the
+endpoint, the Valkey key type, and the second credential are **deleted rather than
+implemented**. See ADR-008 §7.
 
-Ticket TTL is deliberately tiny — it exists only to bridge one HTTP request to one
-socket open, and it appears in a URL, which means it can land in logs.
+**Two properties worth knowing:**
+
+- **Reconnects re-authenticate.** `EventSource` reconnects on its own, and each attempt is
+  a fresh cookie-authenticated request. An expired session ends the stream with a `401`
+  instead of leaving a socket that silently stops producing.
+- **A cross-site page cannot open one.** `SameSite=Lax` withholds the cookie from a
+  cross-site `EventSource`, and with no CORS headers the browser refuses the response
+  regardless.
+
+**Deployment note.** A browser allows roughly six concurrent HTTP/1.1 connections per
+origin, so a long-lived stream per tab can starve other requests. Under HTTP/2 the streams
+are multiplexed and this does not arise — terminate TLS with HTTP/2 enabled.
+
+> **Frontend follow-up.** `frontend/features/chat/useChatSocket.ts` is still a
+> WebSocket-shaped scaffold, and it takes a `sessionId` argument it can never hold — the
+> cookie is `HttpOnly`. It becomes an SSE hook with no session argument when the chat
+> endpoint lands. The helpers it leaned on (`getWsTicket`, `chatSocketUrl`) and the
+> `WsTicket` DTO were removed on 2026-09-03.
 
 ---
 
@@ -402,7 +415,7 @@ The single GitHub App issues two token types; both stay on the backend.
 | Session theft (detection) | `ip` / `user_agent` recorded; anomalies can force re-auth |
 | Bulk revocation | Per-user session index (`user_sessions:<user_id>`) |
 | Session ID guessing | Cryptographically secure random IDs (`rand`, ≥128 bits) |
-| WebSocket auth | Single-use, short-TTL ticket; never the session ID |
+| Stream auth (SSE) | The session cookie on an ordinary `GET` — no second credential to mint, leak, or log (ADR-008 §7) |
 | Brute force / abuse | Valkey fixed-window rate limit on the login handshake, keyed on a trusted-proxy-aware client address (ADR-007) |
 | Token leakage | GitHub tokens not stored; encrypted only if ever persisted |
 | Secrets in logs | Secrets wrapped in `SecretString` — `Debug` prints `[REDACTED]` |
@@ -474,8 +487,8 @@ there is nothing left to brute-force.
 - **Instant revocation** — delete the key; no waiting for a token to expire.
 - **No token-invalidation problem** — no refresh tokens, no rotation dance, no
   stolen-JWT-still-valid window.
-- **Natural fit for Valkey** — TTLs, rate limits, the OAuth `state`, and WS tickets
-  all live in one fast store.
+- **Natural fit for Valkey** — TTLs, rate limits, and the OAuth `state` all live in
+  one fast store.
 
 The design stays centralized and easy to extend — additional identity providers slot
 in behind the same session model without touching cookies, middleware, or logout.
@@ -505,8 +518,24 @@ Tracked here so they don't get lost between this document and ADR-008.
       composition root only, and the real routes live in
       `infrastructure/http/routes/auth.rs` as `/api/auth/github` and
       `/api/auth/github/callback`
-- [ ] `frontend/lib/api-client.ts` — `getWsTicket(sessionId)` must take no argument
-      (blocked on the WS-vs-SSE decision)
-- [ ] Decide the rate-limit budget for `/api/auth/github` and the callback
+- [x] Decide the rate-limit budget for `/api/auth/github` and the callback — 20 requests
+      per 60 seconds per client address, shared by both halves of the handshake, shipped
+      2026-08-29 (ADR-007)
+- [x] Settle WebSocket vs SSE for chat streaming — **SSE**, decided 2026-09-03. The
+      ticket mechanism is deleted rather than implemented (ADR-008 §7), and
+      `getWsTicket`, `chatSocketUrl`, and the `WsTicket` DTO are gone from the frontend
+- [ ] `frontend/features/chat/useChatSocket.ts` — still WebSocket-shaped and still takes a
+      `sessionId` it cannot have. Rewrite as an SSE hook when the chat endpoint exists
+- [ ] The post-login redirect still hardcodes `/dashboard/`; the
+      authorized-but-not-installed branch above needs the `installations` module
 - [ ] Decide whether `installations` reacts to `UserAuthenticatedEvent` or is queried
       directly by the callback route (this doc assumes queried)
+- [ ] **Not v0.1** (decided 2026-09-03) — no `ListSessionsQuery` and no active-devices
+      view. The `ip` and `user_agent` on each session record are therefore written and
+      never read for now: they stay because they are the input to the session-theft row
+      in Security Controls above, not because something displays them. Do not drop the
+      fields to tidy up an unused column
+- [ ] `auth` emits no domain events yet and subscribes to none —
+      `UserAuthenticatedEvent` and `UserSessionsRevokedEvent` are declared in
+      ARCHITECTURE.md §3 and unwritten in `domain/events.rs`. Every involuntary
+      revocation in the table above waits on that and on the event bus (ADR-004)
