@@ -14,7 +14,7 @@ A shared kernel is needed for primitive types and cross-cutting concerns. Withou
 
 The `shared_kernel/` module is strictly limited to:
 
-1. **Primitive ID types** (newtypes): `UserId`, `InstallationId`, `RepoFullName`, `ConversationId`, `MessageId`
+1. **Primitive ID types** (newtypes): `UserId`, `InstallationId`, `RepoFullName`, `ConversationId`, `MessageId`, `CorrelationId`
 2. **`DomainEvent` trait** — marker trait for all domain events
 3. **`AppError`** — unified error enum (variants added per module, not per module's internals)
 4. **`AppContext`** — the dependency injection container holding DB pool, event bus, config

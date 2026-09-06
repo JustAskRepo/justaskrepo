@@ -1,6 +1,6 @@
 # JustAskRepo — Architecture Documentation
 
-> **Last Updated:** 2026-08-01  
+> **Last Updated:** 2026-09-06  
 > **Status:** Active  
 > **Architect:** Arya Sharma
 
@@ -108,6 +108,10 @@ Neither is a home for `utils`. Anything that fits neither belongs inside a modul
 | `indexing` | Clone queue, chunks, embeddings, Qdrant collections | `RepoIndexedEvent`, `IndexingFailedEvent` | `RepoInstalledEvent` |
 | `chat` | Conversations, messages, RAG context assembly | `ConversationCreatedEvent` | `RepoIndexedEvent` |
 | `webhooks` | Raw webhook parsing, signature verification | — | — (routes to other modules) |
+
+> This table is the design, not the build state. Only `auth` exists today: it emits both of
+> its events, and its **Listens To** column is what it will subscribe to once `installations`
+> publishes — `auth::subscribe` currently returns no listeners. See §6.
 
 ---
 
@@ -279,14 +283,48 @@ Modules communicate **asynchronously via domain events** for all state changes. 
 ```rust
 // infrastructure/event_bus.rs
 pub struct EventBus {
-    // tokio broadcast channel per event type
+    // one tokio broadcast channel per event type, keyed by TypeId
 }
 
 impl EventBus {
-    pub async fn publish<E: DomainEvent>(&self, event: E) -> Result<()>
-    pub fn subscribe<E: DomainEvent>(&self) -> EventReceiver<E>
+    pub async fn publish<E: DomainEvent>(&self, event: E)
+    pub async fn subscribe<E, F, Fut>(&self, handler: F) -> JoinHandle<()>
 }
 ```
+
+Three properties of that signature are deliberate, and each rules out an obvious alternative:
+
+**One channel per event type, not one channel carrying every type.** A single shared
+channel would have to erase the type behind `dyn DomainEvent`, and it cannot: `Clone` requires
+`Sized`, so a trait inheriting from it is never object-safe. The per-type map is therefore
+forced by the trait — and it pays for itself, because a slow listener can only fall behind on
+its own channel and never starves another module's events.
+
+**`publish` returns nothing.** Sending to zero listeners is the *normal* state of a young
+system — `auth` publishes `UserAuthenticatedEvent` today with nothing listening, and will keep
+doing so until `installations` exists to hear it. A `Result` would make every command handler decide what to do about "nobody is
+listening" when the honest answer is nothing, and a login must never fail because a downstream
+module has not been written yet. It stays `async` regardless, so that the day this becomes a
+broker call, every caller already has the `.await`.
+
+**`subscribe` takes the handler rather than handing back a receiver.** The listener loop — lag
+accounting, handler errors, handler panics, clean exit on shutdown — is written once in
+`event_bus.rs` instead of once per module, where five copies would drift. Each module's
+`api.rs` exposes `pub async fn subscribe(ctx) -> Vec<JoinHandle<()>>`; `main.rs` collects the
+handles and awaits them after the server stops.
+
+### What the Bus Guarantees
+
+Delivery is **at-most-once and in-memory**. These are properties to design against, not
+hypotheticals:
+
+| Property | Consequence |
+| --- | --- |
+| A crash loses unhandled events | The state change landed, the announcement did not. For uninstall→revoke this has a security consequence: the App is gone and the sessions survive. GitHub re-delivers webhooks, which usually covers it; the durable fix is an outbox (ADR-004) |
+| Ordering holds per channel, not across them | Listeners are independent tasks. Logic that genuinely needs "B only after A" belongs inside one module, not across the bus |
+| A slow listener loses events, loudly | The channel overwrites its oldest entries and tells the listener how many it missed. Logged at `error!` with the count; the listener never stops, because a subscription that quits on lag turns a hiccup into a permanent outage |
+| A panicking handler does not kill its listener | Each handler runs in its own task, so the failure ends that invocation and nothing else |
+| Handlers must be idempotent | Not yet strictly required — in-memory delivery is at-most-once — but the outbox upgrade makes it at-*least*-once. `RevokeAllSessionsCommand` was already built so that revoking zero sessions is success, which is what makes handling that event twice harmless |
 
 ### Event Flow Example
 ```text
@@ -312,7 +350,14 @@ impl EventBus {
 - State changes ALWAYS emit an event, never call another module directly
 - Event handlers are registered at startup in `main.rs`
 - Events are plain Rust structs deriving `Clone + Debug + Serialize`
-- Events live in `modules/<name>/domain/events.rs`
+- Events live in `modules/<name>/domain/events.rs` **and are re-exported from `api.rs`** — an
+  event is part of a module's public contract, so changing its fields is a breaking change in
+  exactly the way changing a Command's fields is
+- Every event carries `occurred_at` and a `CorrelationId`; the listener loop puts the
+  correlation ID on the handler's tracing span, which is what makes an async reaction
+  traceable back to the request that caused it
+- Events carry IDs and nothing else a subscriber could fetch with a Query — and never a
+  `SessionId`, which is a bearer credential
 - The `shared_kernel/domain_events.rs` defines the `DomainEvent` trait
 
 > See ADR-004 for the full decision record.

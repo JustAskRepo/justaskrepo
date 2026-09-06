@@ -1,10 +1,11 @@
 # Authentication Architecture — JustAskRepo
 
-> **Last Updated:** 2026-09-03
+> **Last Updated:** 2026-09-06
 > **Status:** Active — login flow, session middleware (including the `Origin` check
 > on mutating methods), `/api/me`, and both logout routes are implemented. This
 > document says *what* the system does; **ADR-008** records why each of these was
-> chosen over its alternative.
+> chosen over its alternative. The two domain events are published as of 2026-09-06;
+> nothing subscribes to them yet.
 
 ## Overview
 
@@ -246,6 +247,12 @@ logout:
 
 Uninstall arrives as a webhook, so the `webhooks` module routes it and `auth`
 reacts — via the event bus, never a direct call.
+
+> **Not yet true.** The bus exists and `auth` publishes its own events, but nothing
+> subscribes: the trigger for every row above is `RepoUninstalledEvent`, owned by the
+> `installations` module, which does not exist yet. Until it does, this table is a
+> design and not a behaviour — **an uninstalled App leaves its user's sessions
+> working.** See ARCHITECTURE.md §6.
 
 ---
 
@@ -535,7 +542,16 @@ Tracked here so they don't get lost between this document and ADR-008.
       never read for now: they stay because they are the input to the session-theft row
       in Security Controls above, not because something displays them. Do not drop the
       fields to tidy up an unused column
-- [ ] `auth` emits no domain events yet and subscribes to none —
-      `UserAuthenticatedEvent` and `UserSessionsRevokedEvent` are declared in
-      ARCHITECTURE.md §3 and unwritten in `domain/events.rs`. Every involuntary
-      revocation in the table above waits on that and on the event bus (ADR-004)
+- [x] The event bus and `auth`'s two domain events — shipped 2026-09-06.
+      `UserAuthenticatedEvent` and `UserSessionsRevokedEvent` live in
+      `domain/events.rs`, are re-exported from `api.rs`, and are published by the
+      login command and both revoke commands. One event covers both revocations
+      because a subscriber cares about the same fact either way — this user's
+      credentials changed — and `scope` (`One` / `All`) separates them. It carries no
+      `SessionId` on purpose: that type redacts its own `Debug` so a live credential
+      cannot reach the logs, and events get logged
+- [ ] Nothing subscribes yet, so no involuntary revocation actually happens.
+      `auth::subscribe` returns an empty `Vec` because the event it needs to hear —
+      `RepoUninstalledEvent` — belongs to `installations`. The handler itself is
+      already specified: reuse the `RevokeAllSessionsCommand` that
+      `POST /api/auth/logout/all` builds today, rather than writing new logic

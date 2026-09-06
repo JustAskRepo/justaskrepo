@@ -4,6 +4,8 @@
 // No framework types (rule 9): only std bounds, so events stay decoupled from
 // the web framework and async runtime they happen to travel on.
 
+use super::types::CorrelationId;
+
 /// Marker trait for everything that travels on the event bus.
 ///
 /// The supertrait bounds are what the bus requires of any event:
@@ -16,4 +18,9 @@
 /// breaking subscribers.
 pub trait DomainEvent: Clone + std::fmt::Debug + Send + Sync + 'static {
     fn event_name(&self) -> &'static str;
+
+    /// Ties this event to whatever caused it. The listener loop puts it on the
+    /// handler's span, so one search turns up the login and every reaction to
+    /// it — rather than a guess about which of them belong together.
+    fn correlation_id(&self) -> CorrelationId;
 }

@@ -5,6 +5,7 @@
 // Handlers are thin — they delegate to application/ use cases.
 
 use secrecy::SecretString;
+use tokio::task::JoinHandle;
 
 use crate::modules::auth::application::commands::{
     complete_github_login, revoke_all_sessions, revoke_session, start_github_login,
@@ -17,6 +18,29 @@ use crate::{
         types::{GitHubId, SessionId, UserId},
     },
 };
+
+// ─── Events ──────────────────────────────────────────────────────────────────
+
+pub use crate::modules::auth::domain::events::{UserAuthenticatedEvent, UserSessionsRevokedEvent};
+pub use crate::modules::auth::domain::session::RevocationScope;
+
+// ─── Subscriptions ───────────────────────────────────────────────────────────
+
+/// Starts this module's listeners and hands their task handles to `main.rs`,
+/// which waits for them on shutdown rather than cutting them off mid-handler.
+///
+/// Empty on purpose: nothing `auth` needs to react to has been published by
+/// anyone yet. The first entry is `RepoUninstalledEvent` from `installations` —
+/// an App uninstall revoking every session for that user — and it will reuse
+/// the `RevokeAllSessionsCommand` that `POST /api/auth/logout/all` already
+/// builds, rather than growing logic of its own.
+///
+/// A `Vec` from the start, empty rather than absent: a module ends up listening
+/// to more than one event, and widening this signature later would touch
+/// `main.rs` and every module that had returned something narrower.
+pub async fn subscribe(_ctx: &AppContext) -> Vec<JoinHandle<()>> {
+    Vec::new()
+}
 
 // ─── Commands ────────────────────────────────────────────────────────────────
 
@@ -63,6 +87,7 @@ pub async fn handle_complete_github_login(
         ctx.valkey.clone(),
         ctx.http.clone(),
         ctx.db.clone(),
+        ctx.events.clone(),
     )
     .await?;
 
@@ -83,7 +108,7 @@ pub async fn handle_revoke_session(
     cmd: RevokeSessionCommand,
     ctx: &AppContext,
 ) -> Result<(), AppError> {
-    revoke_session::run(cmd, ctx.valkey.clone()).await
+    revoke_session::run(cmd, ctx.valkey.clone(), ctx.events.clone()).await
 }
 
 // handle_revoke_all_sessions──────────────────────────────────────────────────
@@ -97,7 +122,7 @@ pub async fn handle_revoke_all_sessions(
     cmd: RevokeAllSessionsCommand,
     ctx: &AppContext,
 ) -> Result<(), AppError> {
-    revoke_all_sessions::run(cmd, ctx.valkey.clone()).await
+    revoke_all_sessions::run(cmd, ctx.valkey.clone(), ctx.events.clone()).await
 }
 
 // ─── Queries ─────────────────────────────────────────────────────────────────

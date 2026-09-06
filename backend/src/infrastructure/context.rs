@@ -18,6 +18,7 @@ use std::{
 
 use super::{
     config::{AppConfig, RateLimitConfig},
+    event_bus::EventBus,
     rate_limiter::RateLimitPolicy,
 };
 use secrecy::SecretString;
@@ -48,8 +49,8 @@ pub struct AppContext {
     pub db: PgPool,
     pub valkey: deadpool_redis::Pool,
     pub http: reqwest::Client,
+    pub events: EventBus,
     pub started_at: Instant,
-    // TODO(event_bus): infrastructure/event_bus.rs, per ADR-004.
 }
 
 impl AppContext {
@@ -70,6 +71,7 @@ impl AppContext {
             db,
             valkey,
             http,
+            events: EventBus::new(config.events.channel_capacity),
             started_at: Instant::now(),
         })
     }

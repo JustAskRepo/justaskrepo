@@ -10,6 +10,7 @@
 pub mod config;
 pub mod context;
 pub mod db;
+pub mod event_bus;
 pub mod http;
 pub mod rate_limiter;
 pub mod valkey;

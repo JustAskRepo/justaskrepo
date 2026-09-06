@@ -47,6 +47,7 @@ pub struct AppConfig {
     pub github: GitHubAppConfig,
     pub session: SessionConfig,
     pub rate_limit: RateLimitConfig,
+    pub events: EventBusConfig,
 }
 
 #[derive(Debug)]
@@ -100,6 +101,13 @@ pub struct GitHubAppConfig {
 pub struct RateLimitConfig {
     pub auth_max_requests: u32,
     pub auth_window: Duration,
+}
+
+#[derive(Debug)]
+pub struct EventBusConfig {
+    /// Events one channel holds for a listener still working through the last
+    /// one. Per event type, not shared (ADR-004).
+    pub channel_capacity: usize,
 }
 
 #[derive(Debug)]
@@ -171,6 +179,9 @@ impl AppConfig {
                 auth_max_requests: parsed_or("AUTH_RATE_LIMIT_MAX_REQUESTS", "20")?,
                 auth_window: seconds_or("AUTH_RATE_LIMIT_WINDOW_SECS", "60")?,
             },
+            events: EventBusConfig {
+                channel_capacity: parsed_or("EVENT_BUS_CHANNEL_CAPACITY", "256")?,
+            },
         };
 
         config.validate()?;
@@ -207,6 +218,15 @@ impl AppConfig {
             return Err(ConfigError::Inconsistent(
                 "AUTH_RATE_LIMIT_WINDOW_SECS is 0; a window with no duration never \
                  refills the budget"
+                    .to_owned(),
+            ));
+        }
+
+        if self.events.channel_capacity == 0 {
+            return Err(ConfigError::Inconsistent(
+                "EVENT_BUS_CHANNEL_CAPACITY is 0; a channel that buffers nothing \
+                 makes every listener lag on every event it does not read \
+                 instantly. 0 is a typo, not a switch."
                     .to_owned(),
             ));
         }

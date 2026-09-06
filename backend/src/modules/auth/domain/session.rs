@@ -8,6 +8,21 @@ use crate::shared_kernel::{
     types::{GitHubId, UserId},
 };
 
+/// How much of a user's access a revocation took with it.
+///
+/// `pub` where the rest of this file is module-private, because it is a field
+/// of `UserSessionsRevokedEvent` and so part of this module's published
+/// contract. It carries no `SessionId` on purpose: that type redacts its own
+/// `Debug` so a live credential cannot reach the logs, and an event is a thing
+/// that gets logged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RevocationScope {
+    /// One device signed out. The user's other sessions still work.
+    One,
+    /// Every session for this user, the caller's own included.
+    All,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub(in crate::modules::auth) struct Session {
     pub(in crate::modules::auth) user_id: UserId,

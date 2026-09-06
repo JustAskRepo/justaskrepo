@@ -5,12 +5,14 @@ use secrecy::ExposeSecret;
 use sqlx::PgPool;
 
 use crate::{
-    infrastructure::context::AuthContext,
+    infrastructure::{context::AuthContext, event_bus::EventBus},
     modules::auth::api::CompleteGithubLoginCommand,
     shared_kernel::{error::AppError, types::SessionId},
 };
 
-use crate::modules::auth::domain::{random_token, session::Session};
+use crate::modules::auth::domain::{
+    events::UserAuthenticatedEvent, random_token, session::Session,
+};
 use crate::modules::auth::infrastructure::{
     github_oauth_client, oauth_state_store, session_store, user_repository,
 };
@@ -25,6 +27,7 @@ pub(crate) async fn run(
     valkey: deadpool_redis::Pool,
     http: reqwest::Client,
     db: PgPool,
+    events: EventBus,
 ) -> Result<SessionId, AppError> {
     oauth_state_store::verify_and_consume_state_valkey(cmd.state.expose_secret(), valkey.clone())
         .await?;
@@ -53,5 +56,15 @@ pub(crate) async fn run(
     .await?;
 
     tracing::info!(user_id = user_id.0, "session created");
+
+    // After the session exists, never before.
+    events
+        .publish(UserAuthenticatedEvent::new(
+            user_id,
+            profile.github_user_id,
+            Utc::now(),
+        ))
+        .await;
+
     Ok(session_id)
 }
