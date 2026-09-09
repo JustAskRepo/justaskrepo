@@ -11,12 +11,18 @@ base64 = "0.23.0"
 chrono = { version = "0.4.45", features = ["serde"] }
 deadpool-redis = "0.23.0"
 dotenvy = "0.15.7"
+hmac = "0.13.0"
+# RS256 for the GitHub App JWT. The crypto provider must be named explicitly:
+# both ring and aws-lc-rs are already in the tree via rustls, so nothing can
+# infer a process-level default. aws-lc-rs is the one rustls already builds here.
+jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 qdrant-client = "1.18.0"
 rand = "0.10.2"
 reqwest = { version = "0.13.3", features = ["json","form", "rustls"] }
 secrecy = "0.10.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+sha2 = "0.11.0"
 sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid", "chrono"] }
 thiserror = "2.0.18"
 time = "0.3.55"

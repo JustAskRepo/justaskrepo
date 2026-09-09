@@ -248,11 +248,17 @@ logout:
 Uninstall arrives as a webhook, so the `webhooks` module routes it and `auth`
 reacts — via the event bus, never a direct call.
 
-> **Not yet true.** The bus exists and `auth` publishes its own events, but nothing
-> subscribes: the trigger for every row above is `RepoUninstalledEvent`, owned by the
-> `installations` module, which does not exist yet. Until it does, this table is a
-> design and not a behaviour — **an uninstalled App leaves its user's sessions
-> working.** See ARCHITECTURE.md §6.
+> **True for uninstall as of 2026-09-09.** `installations` publishes
+> `RepoUninstalledEvent` from the webhook path and `auth` subscribes to it, revoking every
+> session for each affected user through the same `RevokeAllSessionsCommand` that
+> `POST /api/auth/logout/all` builds. The other two rows remain design: nothing deletes a
+> user record yet, and nothing detects session theft.
+>
+> One caveat carries over from ARCHITECTURE.md §6 and is not fixed by this. The bus is
+> in-memory and at-most-once, so a process death between the webhook landing and the handler
+> running still leaves those sessions alive. GitHub redelivers, which usually covers it; the
+> durable fix is the outbox in ADR-004. The handler is already idempotent — revoking zero
+> sessions is a success — so it is ready for that upgrade.
 
 ---
 
@@ -533,10 +539,16 @@ Tracked here so they don't get lost between this document and ADR-008.
       `getWsTicket`, `chatSocketUrl`, and the `WsTicket` DTO are gone from the frontend
 - [ ] `frontend/features/chat/useChatSocket.ts` — still WebSocket-shaped and still takes a
       `sessionId` it cannot have. Rewrite as an SSE hook when the chat endpoint exists
-- [ ] The post-login redirect still hardcodes `/dashboard/`; the
-      authorized-but-not-installed branch above needs the `installations` module
-- [ ] Decide whether `installations` reacts to `UserAuthenticatedEvent` or is queried
-      directly by the callback route (this doc assumes queried)
+- [x] The post-login redirect no longer hardcodes `/dashboard/` — shipped 2026-09-09. The
+      callback reconciles the user's installations with the access token before it is
+      dropped, then asks `installations` whether any grant is usable and sends the user to
+      `/api/installations/new` if not. An unreadable status falls back to the dashboard,
+      which renders its own install prompt when the list is empty
+- [x] Decide whether `installations` reacts to `UserAuthenticatedEvent` or is queried
+      directly by the callback route — **called directly by the callback route**, decided
+      2026-09-09 (ADR-009). This doc's assumption holds. The deciding constraint is that
+      authorization is reconciled from the user access token at login, and events carry IDs
+      and never credentials — a subscriber would arrive with a user id and no token
 - [ ] **Not v0.1** (decided 2026-09-03) — no `ListSessionsQuery` and no active-devices
       view. The `ip` and `user_agent` on each session record are therefore written and
       never read for now: they stay because they are the input to the session-theft row
@@ -550,8 +562,9 @@ Tracked here so they don't get lost between this document and ADR-008.
       credentials changed — and `scope` (`One` / `All`) separates them. It carries no
       `SessionId` on purpose: that type redacts its own `Debug` so a live credential
       cannot reach the logs, and events get logged
-- [ ] Nothing subscribes yet, so no involuntary revocation actually happens.
-      `auth::subscribe` returns an empty `Vec` because the event it needs to hear —
-      `RepoUninstalledEvent` — belongs to `installations`. The handler itself is
-      already specified: reuse the `RevokeAllSessionsCommand` that
-      `POST /api/auth/logout/all` builds today, rather than writing new logic
+- [x] Involuntary revocation works — shipped 2026-09-09.
+      `auth::subscribe` returns one listener for `RepoUninstalledEvent`, and
+      `application/events/on_repo_uninstalled.rs` reuses the `RevokeAllSessionsCommand`
+      that `POST /api/auth/logout/all` builds rather than growing revocation logic of its
+      own. Verified end to end against a signed `installation.deleted`: the affected user's
+      sessions went to zero and an unrelated user's were untouched

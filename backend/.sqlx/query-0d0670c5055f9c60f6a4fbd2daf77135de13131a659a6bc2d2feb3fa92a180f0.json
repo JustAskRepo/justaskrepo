@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO user_repositories (\n                user_id, repository_id, installation_id, full_name, private, default_branch\n            )\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ON CONFLICT (user_id, repository_id) DO UPDATE\n            SET installation_id = EXCLUDED.installation_id,\n                full_name       = EXCLUDED.full_name,\n                private         = EXCLUDED.private,\n                default_branch  = EXCLUDED.default_branch,\n                synced_at       = now()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8",
+        "Text",
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0d0670c5055f9c60f6a4fbd2daf77135de13131a659a6bc2d2feb3fa92a180f0"
+}

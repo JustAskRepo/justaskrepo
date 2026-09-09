@@ -74,9 +74,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** GET /api/repositories. */
-export function getRepos(): Promise<RepoSummary[]> {
-  return request<RepoSummary[]>("/repositories");
+/**
+ * GET /api/repositories.
+ *
+ * Pass `{ refresh: true }` for a deliberate refresh — a button press, not a
+ * poll. Axum re-reads the App installation from GitHub before answering, which
+ * it otherwise throttles so a polling tab does not become a polling client of
+ * GitHub. Only use it where a person asked.
+ */
+export function getRepos(options: { refresh?: boolean } = {}): Promise<RepoSummary[]> {
+  return request<RepoSummary[]>(options.refresh ? "/repositories?refresh=1" : "/repositories");
 }
 
 /** GET /api/repositories/:id/status. */

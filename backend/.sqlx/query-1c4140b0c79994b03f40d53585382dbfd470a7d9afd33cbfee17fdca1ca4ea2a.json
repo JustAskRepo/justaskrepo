@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT ur.repository_id, ur.installation_id, ur.full_name,\n               ur.private, ur.default_branch\n        FROM user_repositories ur\n        JOIN installations i ON i.id = ur.installation_id\n        WHERE ur.user_id = $1 AND i.suspended_at IS NULL\n        ORDER BY ur.full_name\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "repository_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "user_repositories",
+            "name": "repository_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "installation_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "user_repositories",
+            "name": "installation_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "full_name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_repositories",
+            "name": "full_name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "private",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "user_repositories",
+            "name": "private"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "default_branch",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_repositories",
+            "name": "default_branch"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1c4140b0c79994b03f40d53585382dbfd470a7d9afd33cbfee17fdca1ca4ea2a"
+}

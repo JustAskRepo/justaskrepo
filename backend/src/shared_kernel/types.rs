@@ -48,3 +48,33 @@ impl fmt::Display for CorrelationId {
         self.0.fmt(f)
     }
 }
+
+/// GitHub's identifier for an App installation — the scoped grant that says
+/// this app may read these repositories.
+///
+/// Assigned by GitHub rather than by us, which is also why it is the primary
+/// key of the `installations` table: it is the idempotency key that every
+/// writer upserts on, and the reason the setup redirect and the
+/// `installation.created` webhook are safe to race (ADR-009).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct InstallationId(pub i64);
+
+/// GitHub's identifier for a repository. Immutable across renames, which is
+/// what makes it — and never the full name — the thing to join on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RepositoryId(pub i64);
+
+/// `owner/repo`. The addressing form: a numeric id cannot be cloned, fetched,
+/// or shown to a user. GitHub lets it change under a rename, so it is display
+/// and I/O only and never a key.
+///
+/// A newtype with no parsing, deliberately. Validating the shape would be
+/// behaviour, and ADR-006 caps this file at identifiers that carry none.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RepoFullName(pub String);
+
+impl fmt::Display for RepoFullName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}

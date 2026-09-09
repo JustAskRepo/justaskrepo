@@ -6,7 +6,7 @@ use sqlx::PgPool;
 
 use crate::{
     infrastructure::{context::AuthContext, event_bus::EventBus},
-    modules::auth::api::CompleteGithubLoginCommand,
+    modules::auth::api::{CompleteGithubLoginCommand, CompleteGithubLoginResponse},
     shared_kernel::{error::AppError, types::SessionId},
 };
 
@@ -28,7 +28,7 @@ pub(crate) async fn run(
     http: reqwest::Client,
     db: PgPool,
     events: EventBus,
-) -> Result<SessionId, AppError> {
+) -> Result<CompleteGithubLoginResponse, AppError> {
     oauth_state_store::verify_and_consume_state_valkey(cmd.state.expose_secret(), valkey.clone())
         .await?;
     let token =
@@ -66,5 +66,9 @@ pub(crate) async fn run(
         ))
         .await;
 
-    Ok(session_id)
+    Ok(CompleteGithubLoginResponse {
+        session_id,
+        user_id,
+        user_token: token,
+    })
 }

@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO installations (\n            id, account_id, account_login, account_type,\n            repository_selection, suspended_at\n        )\n        VALUES ($1, $2, $3, $4, $5, $6)\n        ON CONFLICT (id) DO UPDATE\n        SET account_id           = EXCLUDED.account_id,\n            account_login        = EXCLUDED.account_login,\n            account_type         = EXCLUDED.account_type,\n            repository_selection = EXCLUDED.repository_selection,\n            suspended_at         = EXCLUDED.suspended_at,\n            updated_at           = now()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "24be3362a1bcaad0878caa9e5b42c5345f9352b89ca49ed9618af4cd0cac970a"
+}

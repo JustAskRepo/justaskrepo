@@ -27,13 +27,23 @@ pub fn router(ctx: AppContext) -> Router {
     ));
 
     // Public — no session required.
-    let public = Router::new().merge(routes::health::routes()).merge(auth);
+    //
+    // The webhook belongs here and not merely by convenience: it is
+    // authenticated by HMAC over its body, carries no cookie, and is
+    // cross-origin by nature (ARCHITECTURE.md §5.2).
+    let public = Router::new()
+        .merge(routes::health::routes())
+        .merge(routes::webhooks::routes())
+        .merge(routes::installations::routes())
+        .merge(auth);
 
     // Authenticated — every route below the session layer.
     //
     // `route_layer`, not `layer`: it runs only on routes that actually matched,
     // so an unknown path 404s instead of 401ing.
     let protected = routes::auth::protected_routes()
+        .merge(routes::installations::protected_routes())
+        .merge(routes::repositories::protected_routes())
         .route_layer(from_fn_with_state(ctx.clone(), middleware::require_session));
 
     Router::new()

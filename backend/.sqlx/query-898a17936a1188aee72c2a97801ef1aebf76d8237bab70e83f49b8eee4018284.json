@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM user_repositories\n         WHERE installation_id = $1 AND repository_id <> ALL($2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "898a17936a1188aee72c2a97801ef1aebf76d8237bab70e83f49b8eee4018284"
+}

@@ -104,14 +104,32 @@ Neither is a home for `utils`. Anything that fits neither belongs inside a modul
 | Module | Owns | Emits Events | Listens To |
 | --- | --- | --- | --- |
 | `auth` | User identity, sessions, GitHub tokens | `UserAuthenticatedEvent`, `UserSessionsRevokedEvent` | `RepoUninstalledEvent` (revoke sessions on uninstall) |
-| `installations` | GitHub App installations, repo allowlist | `RepoInstalledEvent`, `RepoUninstalledEvent` | `UserAuthenticatedEvent` |
+| `installations` | GitHub App installations, per-user repository access, installation tokens | `RepoInstalledEvent`, `RepoUninstalledEvent` | — (called by the composition root, ADR-009) |
 | `indexing` | Clone queue, chunks, embeddings, Qdrant collections | `RepoIndexedEvent`, `IndexingFailedEvent` | `RepoInstalledEvent` |
 | `chat` | Conversations, messages, RAG context assembly | `ConversationCreatedEvent` | `RepoIndexedEvent` |
-| `webhooks` | Raw webhook parsing, signature verification | — | — (routes to other modules) |
+| `webhooks` | Raw webhook parsing, HMAC verification, dispatch | — | — (routes to other modules, ADR-004) |
 
-> This table is the design, not the build state. Only `auth` exists today: it emits both of
-> its events, and its **Listens To** column is what it will subscribe to once `installations`
-> publishes — `auth::subscribe` currently returns no listeners. See §6.
+> This table is the design, not the build state. `auth` is complete and emits both of its
+> events. `installations` serves the install link, reconciles a user's grants at login,
+> answers the post-login redirect, backs `GET /api/repositories`, mints installation tokens
+> for repository I/O, and now publishes both of its events from the webhook path.
+> `webhooks` exists and dispatches the `installation` and `installation_repositories`
+> families. `indexing` and `chat` do not exist.
+>
+> Two consequences worth naming. `GetInstallationTokenQuery` is the one handler with no
+> route behind it — it exists so `indexing` can reach GitHub without reaching into that
+> module's `infrastructure/`. And `GET /api/repositories` is the first place §5.1's assembly
+> rule bites: the row it returns mixes `installations`' data with `indexing`'s, so until that
+> module exists the route handler reports `never_indexed` itself rather than letting
+> `installations` grow a field it does not own. That route also refreshes before it reads —
+> two calls into one module, which a route may do and a module may not.
+>
+> **The bus carries one subscription.** `auth` listens for `RepoUninstalledEvent` and
+> revokes that user's sessions, which closes the uninstall-leaves-sessions-alive gap in
+> `AUTHENTICATION.md`. `RepoInstalledEvent` is published and still lands nowhere — its
+> subscriber is `indexing`, which does not exist. `installations`' and `webhooks`'
+> **Listens To** columns are empty permanently, by ADR-009 and ADR-004 respectively.
+> See §6.
 
 ---
 
@@ -457,6 +475,8 @@ Run with `cargo test --test architecture`. Fails CI if violated. These are **sou
 | [ADR-005](ADR/ADR-005-architecture-enforcement.md) | Three-Layer Architecture Enforcement Strategy | Accepted |
 | [ADR-006](ADR/ADR-006-shared-kernel-scope.md) | Shared Kernel Scope Restrictions | Accepted |
 | [ADR-007](ADR/ADR-007-rate-limiting.md) | Rate Limiting as an HTTP Layer over a Valkey Counter | Accepted |
+| [ADR-008](ADR/ADR-008-session-authentication.md) | Opaque Valkey Sessions for GitHub App Authentication | Accepted |
+| [ADR-009](ADR/ADR-009-installation-authorization.md) | Repository Authorization from Login-Time Reconciliation | Accepted |
 
 ---
 

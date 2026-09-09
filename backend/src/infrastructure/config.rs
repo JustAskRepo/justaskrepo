@@ -89,6 +89,10 @@ pub struct GeminiConfig {
 #[derive(Debug)]
 pub struct GitHubAppConfig {
     pub app_id: u64,
+    /// The App's URL slug — the last path segment of its GitHub page. The
+    /// install link is built from it, and unlike `app_id` it cannot be derived
+    /// from anything else we hold.
+    pub app_slug: String,
     pub client_id: String,
     pub client_secret: SecretString,
     pub private_key_pem: SecretString,
@@ -162,6 +166,7 @@ impl AppConfig {
             },
             github: GitHubAppConfig {
                 app_id: parsed("GITHUB_APP_ID")?,
+                app_slug: required("GITHUB_APP_SLUG")?,
                 client_id: required("GITHUB_CLIENT_ID")?,
                 client_secret: secret("GITHUB_CLIENT_SECRET")?,
                 private_key_pem: load_private_key()?,
@@ -229,6 +234,21 @@ impl AppConfig {
                  instantly. 0 is a typo, not a switch."
                     .to_owned(),
             ));
+        }
+
+        if !self
+            .github
+            .app_slug
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            return Err(ConfigError::Inconsistent(format!(
+                "GITHUB_APP_SLUG is {:?}, which is not a bare slug. It is the last \
+                 path segment of the App's GitHub page — `justaskrepo`, not the \
+                 whole URL. A slug with a slash in it builds an install link that \
+                 points somewhere else entirely.",
+                self.github.app_slug
+            )));
         }
 
         let secure_origin = self.server.public_url.starts_with("https://")

@@ -47,7 +47,12 @@ export function useRepos(): ReposState {
     setError(err instanceof Error ? err : new Error("Failed to load repositories"));
   }, []);
 
-  const load = useCallback(() => getRepos().then(commit, fail), [commit, fail]);
+  // `force` separates a button press from a poll: only the former asks Axum to
+  // re-read the installation from GitHub instead of serving its throttled view.
+  const load = useCallback(
+    (force = false) => getRepos({ refresh: force }).then(commit, fail),
+    [commit, fail],
+  );
 
   useEffect(() => {
     alive.current = true;
@@ -67,7 +72,7 @@ export function useRepos(): ReposState {
 
   const refresh = useCallback(() => {
     setRefreshing(true);
-    void load().finally(() => {
+    void load(true).finally(() => {
       if (alive.current) setRefreshing(false);
     });
   }, [load]);

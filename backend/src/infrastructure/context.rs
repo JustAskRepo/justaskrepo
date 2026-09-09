@@ -35,6 +35,25 @@ pub struct AuthContext {
     pub redirect_uri: String,
 }
 
+/// Config the `installations` module needs: the install link's slug, and the
+/// credentials that mint installation tokens.
+///
+/// The private key never leaves this struct as anything but a `SecretString`,
+/// and only `installations/infrastructure/` ever reads it.
+#[derive(Debug)]
+pub struct InstallationsContext {
+    pub app_slug: String,
+    pub app_id: u64,
+    pub private_key_pem: SecretString,
+}
+
+/// The shared secret GitHub signs deliveries with. Its own struct for the same
+/// reason the others are: it is one module's config, not the app's.
+#[derive(Debug)]
+pub struct WebhooksContext {
+    pub secret: SecretString,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimits {
     pub auth: RateLimitPolicy,
@@ -43,6 +62,8 @@ pub struct RateLimits {
 #[derive(Clone)]
 pub struct AppContext {
     pub auth: Arc<AuthContext>,
+    pub installations: Arc<InstallationsContext>,
+    pub webhooks: Arc<WebhooksContext>,
     pub public_origin: Arc<str>,
     pub rate_limits: RateLimits,
     pub trusted_proxy_hops: u8,
@@ -58,6 +79,8 @@ impl AppContext {
         let db = super::db::connect_db(&config.database).await?;
         let valkey = super::valkey::connect_valkey(&config.valkey).await?;
         let auth = Arc::new(AuthContext::from(config));
+        let installations = Arc::new(InstallationsContext::from(config));
+        let webhooks = Arc::new(WebhooksContext::from(config));
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .connect_timeout(Duration::from_secs(3))
@@ -65,6 +88,8 @@ impl AppContext {
             .build()?;
         Ok(Self {
             auth,
+            installations,
+            webhooks,
             public_origin: Arc::from(config.server.public_origin.as_str()),
             rate_limits: RateLimits::from(&config.rate_limit),
             trusted_proxy_hops: config.server.trusted_proxy_hops,
@@ -84,6 +109,24 @@ impl From<&RateLimitConfig> for RateLimits {
                 max_requests: config.auth_max_requests,
                 window: config.auth_window,
             },
+        }
+    }
+}
+
+impl From<&AppConfig> for InstallationsContext {
+    fn from(config: &AppConfig) -> Self {
+        Self {
+            app_slug: config.github.app_slug.clone(),
+            app_id: config.github.app_id,
+            private_key_pem: config.github.private_key_pem.clone(),
+        }
+    }
+}
+
+impl From<&AppConfig> for WebhooksContext {
+    fn from(config: &AppConfig) -> Self {
+        Self {
+            secret: config.github.webhook_secret.clone(),
         }
     }
 }

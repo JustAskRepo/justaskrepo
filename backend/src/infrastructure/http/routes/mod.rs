@@ -10,4 +10,7 @@
 
 pub mod auth;
 pub mod health;
-// TODO: repositories.rs, chat.rs, webhooks.rs — as each module lands.
+pub mod installations;
+pub mod repositories;
+pub mod webhooks;
+// TODO: chat.rs — as the module lands.

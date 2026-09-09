@@ -24,6 +24,10 @@ use crate::{
         handle_get_user_profile, handle_revoke_all_sessions, handle_revoke_session,
         handle_start_github_login,
     },
+    modules::installations::{
+        GetInstallationStatusQuery, LinkUserInstallationsCommand, handle_get_installation_status,
+        handle_link_user_installations,
+    },
     shared_kernel::{
         error::AppError,
         types::{GitHubId, SessionId, UserId},
@@ -163,10 +167,57 @@ async fn github_auth_callback(
     )
     .await?;
 
+    // The token is alive for exactly this long. It is not stored, not logged,
+    // and not published — the composition root hands it straight to the one
+    // module that can spend it (ADR-009 decision 1).
+    match handle_link_user_installations(
+        LinkUserInstallationsCommand {
+            user_id: res.user_id,
+            user_token: res.user_token,
+        },
+        &ctx,
+    )
+    .await
+    {
+        Ok(linked) => tracing::info!(
+            installations = linked.installations,
+            repositories = linked.repositories,
+            "installations reconciled at login"
+        ),
+        // Never fatal. Someone signed in with an empty dashboard can retry;
+        // someone who cannot sign in because GitHub's installations endpoint
+        // blipped has a much worse day.
+        Err(error) => tracing::warn!(%error, "linking installations failed; the login stands"),
+    }
+
     Ok((
         jar.add(session_cookie(&ctx.auth, res.session_id)?),
-        Redirect::temporary("/dashboard/"),
+        Redirect::temporary(post_login_destination(res.user_id, &ctx).await),
     ))
+}
+
+/// Where a freshly signed-in user lands. This is the branch `AUTHENTICATION.md`
+/// has described since before `installations` existed: authorization and
+/// installation are separate acts, and a user who has done the first but not the
+/// second needs the install screen, not an empty dashboard.
+///
+/// It redirects to our own install route rather than a GitHub URL so that the
+/// App's address stays in one place. On an unreadable status the dashboard wins:
+/// it renders an install prompt when the list is empty, so guessing that way is
+/// merely redundant, while guessing the other way sends a user with repositories
+/// to a screen telling them to add some.
+async fn post_login_destination(user_id: UserId, ctx: &AppContext) -> &'static str {
+    const DASHBOARD: &str = "/dashboard/";
+    const INSTALL: &str = "/api/installations/new";
+
+    match handle_get_installation_status(GetInstallationStatusQuery { user_id }, ctx).await {
+        Ok(status) if status.has_any => DASHBOARD,
+        Ok(_) => INSTALL,
+        Err(error) => {
+            tracing::warn!(%error, "installation status unreadable; defaulting to the dashboard");
+            DASHBOARD
+        }
+    }
 }
 
 /// The `__Host-` prefix the default cookie name carries is only honoured when the

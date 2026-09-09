@@ -10,7 +10,9 @@ use tokio::task::JoinHandle;
 use crate::modules::auth::application::commands::{
     complete_github_login, revoke_all_sessions, revoke_session, start_github_login,
 };
+use crate::modules::auth::application::events::on_repo_uninstalled;
 use crate::modules::auth::application::queries::{get_session, get_user_profile};
+use crate::modules::installations::RepoUninstalledEvent;
 use crate::{
     infrastructure::AppContext,
     shared_kernel::{
@@ -29,17 +31,31 @@ pub use crate::modules::auth::domain::session::RevocationScope;
 /// Starts this module's listeners and hands their task handles to `main.rs`,
 /// which waits for them on shutdown rather than cutting them off mid-handler.
 ///
-/// Empty on purpose: nothing `auth` needs to react to has been published by
-/// anyone yet. The first entry is `RepoUninstalledEvent` from `installations` —
-/// an App uninstall revoking every session for that user — and it will reuse
-/// the `RevokeAllSessionsCommand` that `POST /api/auth/logout/all` already
-/// builds, rather than growing logic of its own.
+/// One listener: `RepoUninstalledEvent` from `installations`, which revokes
+/// every session belonging to a user whose App installation is gone.
 ///
-/// A `Vec` from the start, empty rather than absent: a module ends up listening
-/// to more than one event, and widening this signature later would touch
-/// `main.rs` and every module that had returned something narrower.
-pub async fn subscribe(_ctx: &AppContext) -> Vec<JoinHandle<()>> {
-    Vec::new()
+/// Naming another module's event type is the one dependency the bus does not
+/// remove, and it is deliberate. An event is part of a module's published
+/// contract (ARCHITECTURE.md §6) — `installations` re-exports this one from its
+/// own `api.rs`, so this is a type dependency on a public surface, not a reach
+/// into another module's internals. What it is *not* is a call: `installations`
+/// has no idea anyone is listening, and deleting `auth` tomorrow would not
+/// change a line of it.
+///
+/// A `Vec` because a module ends up listening to more than one event, and
+/// widening this signature later would touch `main.rs` and every module that
+/// had returned something narrower.
+pub async fn subscribe(ctx: &AppContext) -> Vec<JoinHandle<()>> {
+    let events = ctx.events.clone();
+    let ctx = ctx.clone();
+
+    vec![
+        events
+            .subscribe(move |event: RepoUninstalledEvent| {
+                on_repo_uninstalled::run(event, ctx.clone())
+            })
+            .await,
+    ]
 }
 
 // ─── Commands ────────────────────────────────────────────────────────────────
@@ -71,9 +87,22 @@ pub struct CompleteGithubLoginCommand {
     pub user_agent: String,
 }
 
+/// Carries the user access token out of the module, and nothing stores it.
+///
+/// ADR-008 decision 3 spends this token on the profile fetch and drops it. It
+/// now has one more job before it is dropped — telling `installations` which
+/// grants this human may see — and the composition root is where that handoff
+/// happens, because a module may not call another module (ARCHITECTURE.md
+/// §5.1) and an event may not carry a credential (ADR-009 decision 2).
+///
+/// `SecretString`, not `String`: this struct derives `Debug`, and a `tracing`
+/// call that formats it must print `[REDACTED]`. Widening that type is a
+/// contract change, not a cleanup.
 #[derive(Debug)]
 pub struct CompleteGithubLoginResponse {
     pub session_id: SessionId,
+    pub user_id: UserId,
+    pub user_token: SecretString,
 }
 
 #[tracing::instrument(skip(ctx))]
@@ -81,7 +110,7 @@ pub async fn handle_complete_github_login(
     cmd: CompleteGithubLoginCommand,
     ctx: &AppContext,
 ) -> Result<CompleteGithubLoginResponse, AppError> {
-    let session_id = complete_github_login::run(
+    complete_github_login::run(
         cmd,
         ctx.auth.clone(),
         ctx.valkey.clone(),
@@ -89,9 +118,7 @@ pub async fn handle_complete_github_login(
         ctx.db.clone(),
         ctx.events.clone(),
     )
-    .await?;
-
-    Ok(CompleteGithubLoginResponse { session_id })
+    .await
 }
 // handle_revoke_session───────────────────────────────────────────────────────
 /// Carries the user id as well as the session id because revocation is two
